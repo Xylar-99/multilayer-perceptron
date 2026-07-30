@@ -1,0 +1,10 @@
+
+
+.venv/* 
+.venv
+
+
+data/
+
+docs/
+*.log
