@@ -1,13 +1,6 @@
 import argparse
 from src.split import split
-
-
-
-def train(args):
-    print("Train")
-    print(args.dataset)
-    print(args.epochs)
-    print(args.learning_rate)
+from src.train import train
 
 
 def predict(args):
@@ -23,6 +16,7 @@ def create_parser():
         dest="command",
         required=True
     )
+
 
     # ---------------- split ----------------
 
@@ -63,18 +57,6 @@ def create_parser():
         required=True
     )
 
-    train_parser.add_argument(
-        "--epochs",
-        type=int,
-        default=100
-    )
-
-    train_parser.add_argument(
-        "--learning_rate",
-        type=float,
-        default=0.01
-    )
-
     train_parser.set_defaults(func=train)
 
     # ---------------- predict ----------------
@@ -89,11 +71,6 @@ def create_parser():
         required=True
     )
 
-    predict_parser.add_argument(
-        "--model",
-        required=True
-    )
-
     predict_parser.set_defaults(func=predict)
 
     return parser
@@ -103,8 +80,9 @@ def create_parser():
 def main():
     parser = create_parser()
     args = parser.parse_args()
-
+    
     args.func(args)
+
 
 
 if __name__ == "__main__":
