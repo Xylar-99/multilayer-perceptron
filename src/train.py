@@ -36,6 +36,9 @@ def preprocess_data(file_path):
 def relu(x):
     return np.maximum(0, x)
 
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x)) 
+
 
 class NeuralNetwork:
 
@@ -54,16 +57,18 @@ class NeuralNetwork:
         self.biases = [np.zeros((1, self.layers[i + 1])) for i in range(len(self.layers) - 1)]
         
     def forward(self, X):
-        # print(f"Input shape: {self.weights[0]}")
+        self.activations = [X]
         for i in range(len(self.weights)):
-            print(f"Layer {i + 1}:")
-            print(f"Weight shape: {self.weights[i]}")
-            print(f"Input shape: {X}")
             z = np.dot(X, self.weights[i]) + self.biases[i]
-            a = relu(z)
-            sys.exit(0)
-            # self.activations.append(a)
-            # X = a
+            if i < len(self.weights) - 1:
+                X = relu(z)
+            else:
+                X = sigmoid(z)
+            self.activations.append(X)
+
+        print("Forward pass completed. Output shape:", self.activations[-1])
+        return self.activations[-1]
+    
 
 
 
@@ -85,7 +90,7 @@ def train(args):
 
     x , y = preprocess_data(args.dataset)
 
-    nn = NeuralNetwork([x.shape[1], HIDDEN_LAYER_SIZES , HIDDEN_LAYER_SIZES // 2, 1])
+    nn = NeuralNetwork([x.shape[1], 3 , 3, 2])
     nn.create_network()
     nn.forward(x)
         
