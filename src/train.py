@@ -32,6 +32,9 @@ def preprocess_data(file_path):
     return x, y
 
 
+def softmax(x):
+    exp_x = np.exp(x - np.max(x, axis=1, keepdims=True))
+    return exp_x / np.sum(exp_x, axis=1, keepdims=True)
 
 def relu(x):
     return np.maximum(0, x)
@@ -57,23 +60,22 @@ class NeuralNetwork:
         self.biases = [np.zeros((1, self.layers[i + 1])) for i in range(len(self.layers) - 1)]
         
     def forward(self, X):
+        self.z_values = []
         self.activations = [X]
         for i in range(len(self.weights)):
-            z = np.dot(X, self.weights[i]) + self.biases[i]
-            if i < len(self.weights) - 1:
-                X = relu(z)
+            z = np.dot(self.activations[-1], self.weights[i]) + self.biases[i]
+            self.z_values.append(z)
+            if i == len(self.weights) - 1:
+                a = softmax(z)
             else:
-                X = sigmoid(z)
-            self.activations.append(X)
-
-        print("Forward pass completed. Output shape:", self.activations[-1])
+                a = relu(z)
+            self.activations.append(a)
         return self.activations[-1]
-    
 
 
 
     def backward(self, X, y):
-        pass
+        
 
     def update_parameters(self):
         pass
@@ -91,6 +93,5 @@ def train(args):
     x , y = preprocess_data(args.dataset)
 
     nn = NeuralNetwork([x.shape[1], 3 , 3, 2])
-    nn.create_network()
-    nn.forward(x)
+    print(nn.forward(x))
         
