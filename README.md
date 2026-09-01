@@ -1,6 +1,6 @@
 # Multilayer Perceptron — Breast Cancer Classification
 
-A from-scratch MLP project. See `docs/GUIDE.md` for full theory and usage.
+A from-scratch MLP project. See `docs/GUIDE.md` for full theory and usage, or `docs/MATH.md` for detailed backpropagation derivations.
 
 ## Quick Start
 
@@ -15,7 +15,7 @@ python -m src.predict --dataset data/test.csv --model saved_model.npy
 
 ```
 src/          # implementation stubs
-docs/         # GUIDE.md + CHECKLIST.md
+docs/         # GUIDE.md + MATH.md
 data/         # dataset
 ```
 
