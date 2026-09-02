@@ -9,6 +9,9 @@ venv/
 *.egg-info/
 dist/
 build/
-saved_model.npy
-*.csv
-!data/*.csv
+output/*.npy
+output/*.png
+output/*.json
+*.npy
+*.png
+.DS_Store
