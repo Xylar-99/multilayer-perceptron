@@ -1,146 +1,166 @@
-import os
-os.environ.setdefault('MPLCONFIGDIR', '/tmp/matplotlib_config')
 import sys
 import argparse
 
-from src.data import Dataset
-from src.model import Dense, MultilayerPerceptron
-from src.train import plot_curves
-from src.predict import print_report
+from src.split import DataSplitter
+from src.train import ModelTrainer
+from src.predict import ModelPredictor
 
 
-def build_parser():
-    parser = argparse.ArgumentParser(
-        description="Multilayer Perceptron (MLP) — Breast Cancer Classification",
-        formatter_class=argparse.RawTextHelpFormatter
-    )
+class MLPApp:
+    """Main application dispatcher for all three execution modes with strict argument validation."""
 
-    # Modes
-    mode_grp = parser.add_argument_group("Execution Modes")
-    mode_grp.add_argument("--split", action="store_true", help="Split dataset into train and test sets")
-    mode_grp.add_argument("--train", action="store_true", help="Train the neural network")
-    mode_grp.add_argument("--predict", action="store_true", help="Evaluate predictions on a dataset")
-    mode_grp.add_argument("mode", nargs="?", choices=["split", "train", "predict"], default=None,
-                          help="Positional mode: 'split', 'train', or 'predict'")
+    # Define allowed flags for each mode
+    ALLOWED_ARGS = {
+        "split": {
+            "--split", "--dataset", "--train_out", "--test_out", "--ratio", "--seed", "--help"
+        },
+        "train": {
+            "--train", "--dataset", "--val_dataset", "--layer", "--epochs",
+            "--batch_size", "--learning_rate", "--model", "--model_out",
+            "--plot_out", "--seed", "--help"
+        },
+        "predict": {
+            "--predict", "--dataset", "--model", "--model_out", "--help"
+        }
+    }
 
-    # Data options
-    data_grp = parser.add_argument_group("Data Options")
-    data_grp.add_argument("--dataset", type=str, default=None, help="Path to CSV dataset")
-    data_grp.add_argument("--val_dataset", type=str, default="data/test.csv", help="Path to validation CSV")
-    data_grp.add_argument("--train_out", type=str, default="data/train.csv", help="Destination train split CSV")
-    data_grp.add_argument("--test_out", type=str, default="data/test.csv", help="Destination test split CSV")
-    data_grp.add_argument("--ratio", type=float, default=0.8, help="Train split ratio (default: 0.8)")
+    # Which mode an argument primarily belongs to (for clear error messages)
+    ARG_MODES = {
+        "--train_out": "split",
+        "--test_out": "split",
+        "--ratio": "split",
+        "--val_dataset": "train",
+        "--layer": "train",
+        "--epochs": "train",
+        "--batch_size": "train",
+        "--learning_rate": "train",
+        "--plot_out": "train",
+        "--model": "predict",
+    }
 
-    # Hyperparameters
-    hyp_grp = parser.add_argument_group("Hyperparameters")
-    hyp_grp.add_argument("--layer", type=int, nargs="+", default=[24, 24], help="Hidden layers (default: 24 24)")
-    hyp_grp.add_argument("--epochs", type=int, default=84, help="Epochs (default: 84)")
-    hyp_grp.add_argument("--batch_size", type=int, default=8, help="Mini-batch size (default: 8)")
-    hyp_grp.add_argument("--learning_rate", type=float, default=0.0314, help="Learning rate (default: 0.0314)")
-    hyp_grp.add_argument("--activation", type=str, default="sigmoid", help="Hidden activation (sigmoid, relu, tanh)")
-    hyp_grp.add_argument("--optimizer", type=str, default="sgd", help="Optimizer (sgd, adam)")
-    hyp_grp.add_argument("--loss", type=str, default="categoricalCrossentropy", help="Loss function")
-    hyp_grp.add_argument("--early_stopping", type=int, default=None, help="Early stopping patience")
-    hyp_grp.add_argument("--seed", type=int, default=42, help="Random seed")
+    @classmethod
+    def validate_args(cls, raw_argv):
+        """
+        Validates that arguments match the chosen execution mode.
+        Throws a clear error if an argument from another mode is used.
+        """
+        # Find all flags starting with '-'
+        passed_flags = [arg.split('=')[0] for arg in raw_argv if arg.startswith('--')]
 
-    # Output options
-    io_grp = parser.add_argument_group("Output Options")
-    io_grp.add_argument("--model", type=str, default="output/saved_model.json", help="Model file path")
-    io_grp.add_argument("--model_out", type=str, default="output/saved_model.json", help="Model output path")
-    io_grp.add_argument("--plot_out", type=str, default="output/learning_curves.png", help="Plot output path")
-    io_grp.add_argument("--no_plot", action="store_true", help="Disable plotting")
+        # Allow help flag
+        if "--help" in passed_flags:
+            return
 
-    return parser
+        # Check mode selection
+        modes_selected = []
+        if "--split" in passed_flags:
+            modes_selected.append("split")
+        if "--train" in passed_flags:
+            modes_selected.append("train")
+        if "--predict" in passed_flags:
+            modes_selected.append("predict")
 
+        if len(modes_selected) == 0:
+            print("Error: No execution mode specified. Please choose one: --split, --train, or --predict.\n", file=sys.stderr)
+            cls.build_parser().print_help()
+            sys.exit(1)
 
-def run_split(dataset, train_out, test_out, ratio, seed):
-    ds = Dataset.from_csv(dataset)
-    train_ds, test_ds = ds.split(train_ratio=ratio, seed=seed)
-    train_ds.save_csv(train_out)
-    test_ds.save_csv(test_out)
-    total = len(ds)
-    print(f"Dataset split complete:")
-    print(f"  Total samples: {total}")
-    print(f"  Train set:     {len(train_ds)} samples ({len(train_ds)/total*100:.1f}%) -> {train_out}")
-    print(f"  Test set:      {len(test_ds)} samples ({len(test_ds)/total*100:.1f}%) -> {test_out}")
+        if len(modes_selected) > 1:
+            modes_str = " and ".join([f"'--{m}'" for m in modes_selected])
+            print(f"Error: Conflicting modes selected ({modes_str}). Please select only ONE mode at a time.", file=sys.stderr)
+            sys.exit(1)
 
+        active_mode = modes_selected[0]
+        allowed = cls.ALLOWED_ARGS[active_mode]
 
-def run_predict(dataset, model_path):
-    if not os.path.exists(dataset):
-        print(f"Error: Dataset '{dataset}' not found.", file=sys.stderr)
-        sys.exit(1)
-    print(f"> Loading model from '{model_path}'...")
-    model = MultilayerPerceptron.load(model_path)
-    print(f"> Loading dataset from '{dataset}'...")
-    ds = Dataset.from_csv(dataset)
-    res = model.evaluate(ds.X, ds.y)
-    print(f"\nEvaluation on {len(ds)} samples:")
-    print(f"Binary Cross-Entropy Loss : {res['bce_loss']:.6f}")
-    print(f"Accuracy                  : {res['accuracy'] * 100:.2f}%")
-    print_report(res)
+        # Check if any passed flag is not allowed in active mode
+        for flag in passed_flags:
+            if flag not in allowed:
+                target_mode = cls.ARG_MODES.get(flag)
+                if target_mode:
+                    print(f"Error: Argument '{flag}' belongs to '{target_mode}' mode, not allowed with '--{active_mode}'.", file=sys.stderr)
+                else:
+                    print(f"Error: Argument '{flag}' is not valid with '--{active_mode}'.", file=sys.stderr)
+                sys.exit(1)
 
+    @staticmethod
+    def build_parser():
+        parser = argparse.ArgumentParser(
+            description="Multilayer Perceptron (MLP) — Wisconsin Breast Cancer Classification",
+            formatter_class=argparse.RawTextHelpFormatter
+        )
 
-def run_train(dataset, val_dataset, layers_cfg, epochs, batch_size, lr, activation, optimizer, loss, model_out, plot_out, early_stopping, seed, no_plot):
-    train_ds = Dataset.from_csv(dataset)
-    val_ds = Dataset.from_csv(val_dataset) if (val_dataset and os.path.exists(val_dataset)) else None
+        # Execution mode flags
+        action_group = parser.add_argument_group("Execution Modes (Choose exactly one)")
+        action_group.add_argument("--split", action="store_true", help="Part 1: Split dataset into train and test sets")
+        action_group.add_argument("--train", action="store_true", help="Part 2: Train neural network")
+        action_group.add_argument("--predict", action="store_true", help="Part 3: Evaluate predictions on a dataset")
 
-    layers = [Dense(units=u, activation=activation, initializer='heUniform') for u in layers_cfg]
-    layers.append(Dense(units=2, activation='softmax', initializer='heUniform'))
+        # Split Options
+        split_group = parser.add_argument_group("Options for --split")
+        split_group.add_argument("--dataset", type=str, default="data/data.csv", help="Path to raw CSV dataset")
+        split_group.add_argument("--train_out", type=str, default="data/train.csv", help="Destination path for train CSV")
+        split_group.add_argument("--test_out", type=str, default="data/test.csv", help="Destination path for test CSV")
+        split_group.add_argument("--ratio", type=float, default=0.8, help="Training split ratio (default: 0.8)")
+        split_group.add_argument("--seed", type=int, default=42, help="Random seed for reproducible shuffling")
 
-    model = MultilayerPerceptron.create_network(layers, seed=seed)
-    history = model.fit(
-        train_data=train_ds, val_data=val_ds, epochs=epochs,
-        batch_size=batch_size, learning_rate=lr,
-        optimizer=optimizer, loss=loss,
-        early_stopping=early_stopping, verbose=True
-    )
+        # Train Options
+        train_group = parser.add_argument_group("Options for --train")
+        train_group.add_argument("--val_dataset", type=str, default="data/test.csv", help="Path to validation CSV dataset")
+        train_group.add_argument("--layer", type=int, nargs="+", default=[24, 24], help="Hidden layer units (default: 24 24)")
+        train_group.add_argument("--epochs", type=int, default=84, help="Number of training epochs (default: 84)")
+        train_group.add_argument("--batch_size", type=int, default=8, help="Mini-batch size (default: 8)")
+        train_group.add_argument("--learning_rate", type=float, default=0.0314, help="Learning rate (default: 0.0314)")
+        train_group.add_argument("--model_out", type=str, default="output/saved_model.json", help="Path to save trained model")
+        train_group.add_argument("--plot_out", type=str, default="output/learning_curves.png", help="Path to save learning curves plot")
 
-    model.save(model_out)
-    if not no_plot:
-        plot_curves(history, save_path=plot_out)
+        # Predict Options
+        predict_group = parser.add_argument_group("Options for --predict")
+        predict_group.add_argument("--model", type=str, default="output/saved_model.json", help="Path to saved model file")
+
+        return parser
+
+    @classmethod
+    def run(cls, raw_argv=None):
+        if raw_argv is None:
+            raw_argv = sys.argv[1:]
+
+        # Validate arguments strictly against selected mode
+        cls.validate_args(raw_argv)
+
+        parser = cls.build_parser()
+        parsed_args = parser.parse_args(raw_argv)
+
+        # Dispatch
+        if parsed_args.split:
+            DataSplitter.run(
+                dataset_path=parsed_args.dataset,
+                train_out=parsed_args.train_out,
+                test_out=parsed_args.test_out,
+                ratio=parsed_args.ratio,
+                seed=parsed_args.seed
+            )
+        elif parsed_args.train:
+            ModelTrainer.run(
+                dataset_path=parsed_args.dataset,
+                val_dataset_path=parsed_args.val_dataset,
+                hidden_layers=parsed_args.layer,
+                epochs=parsed_args.epochs,
+                batch_size=parsed_args.batch_size,
+                learning_rate=parsed_args.learning_rate,
+                model_out=parsed_args.model_out,
+                plot_out=parsed_args.plot_out,
+                seed=parsed_args.seed
+            )
+        elif parsed_args.predict:
+            ModelPredictor.run(
+                dataset_path=parsed_args.dataset,
+                model_path=parsed_args.model
+            )
 
 
 def main():
-    parser = build_parser()
-    args = parser.parse_args()
-
-    mode = "train"
-    if args.split or args.mode == "split":
-        mode = "split"
-    elif args.predict or args.mode == "predict":
-        mode = "predict"
-    elif args.train or args.mode == "train":
-        mode = "train"
-    elif args.dataset and "test" in args.dataset:
-        mode = "predict"
-
-    if mode == "split":
-        dataset = args.dataset or "data/data.csv"
-        run_split(dataset, args.train_out, args.test_out, args.ratio, args.seed)
-    elif mode == "predict":
-        dataset = args.dataset or "data/test.csv"
-        model_path = args.model if args.model != "output/saved_model.json" else args.model_out
-        run_predict(dataset, model_path)
-    else:
-        dataset = args.dataset
-        val_dataset = args.val_dataset
-        if dataset is None:
-            if not os.path.exists("data/train.csv") and os.path.exists("data/data.csv"):
-                print("> Auto-splitting 'data/data.csv'...")
-                run_split("data/data.csv", "data/train.csv", "data/test.csv", args.ratio, args.seed)
-            dataset = "data/train.csv"
-
-        if val_dataset and not os.path.exists(val_dataset):
-            val_dataset = None
-
-        model_path = args.model_out if args.model_out != "output/saved_model.json" else args.model
-        run_train(
-            dataset=dataset, val_dataset=val_dataset, layers_cfg=args.layer,
-            epochs=args.epochs, batch_size=args.batch_size, lr=args.learning_rate,
-            activation=args.activation, optimizer=args.optimizer, loss=args.loss,
-            model_out=model_path, plot_out=args.plot_out, early_stopping=args.early_stopping,
-            seed=args.seed, no_plot=args.no_plot
-        )
+    MLPApp.run()
 
 
 if __name__ == "__main__":
