@@ -101,12 +101,14 @@ class MLPApp:
         split_group.add_argument("--dataset", type=str, default="data/data.csv", help="Path to raw CSV dataset")
         split_group.add_argument("--train_out", type=str, default="data/train.csv", help="Destination path for train CSV")
         split_group.add_argument("--test_out", type=str, default="data/test.csv", help="Destination path for test CSV")
+        split_group.add_argument("--scaler_out", type=str, default="output/scaler.json", help="Destination path for scaler parameters")
         split_group.add_argument("--ratio", type=float, default=0.8, help="Training split ratio (default: 0.8)")
         split_group.add_argument("--seed", type=int, default=42, help="Random seed for reproducible shuffling")
 
         # Train Options
         train_group = parser.add_argument_group("Options for --train")
-        train_group.add_argument("--val_dataset", type=str, default="data/test.csv", help="Path to validation CSV dataset")
+        train_group.add_argument("--train_data", type=str, default="data/train.csv", help="Path to training CSV dataset")
+        train_group.add_argument("--test_data", type=str, default="data/test.csv", help="Path to validation CSV dataset")
         train_group.add_argument("--layer", type=int, nargs="+", default=[24, 24], help="Hidden layer units (default: 24 24)")
         train_group.add_argument("--epochs", type=int, default=84, help="Number of training epochs (default: 84)")
         train_group.add_argument("--batch_size", type=int, default=8, help="Mini-batch size (default: 8)")
@@ -117,6 +119,7 @@ class MLPApp:
         # Predict Options
         predict_group = parser.add_argument_group("Options for --predict")
         predict_group.add_argument("--model", type=str, default="output/saved_model.json", help="Path to saved model file")
+        predict_group.add_argument("--scaler", type=str, default="output/scaler.json", help="Path to scaler parameters")
 
         return parser
 
@@ -137,20 +140,20 @@ class MLPApp:
                 dataset_path=parsed_args.dataset,
                 train_out=parsed_args.train_out,
                 test_out=parsed_args.test_out,
+                scaler_out=parsed_args.scaler_out,
                 ratio=parsed_args.ratio,
                 seed=parsed_args.seed
             )
         elif parsed_args.train:
             ModelTrainer.run(
-                dataset_path=parsed_args.dataset,
-                val_dataset_path=parsed_args.val_dataset,
+                train_data=parsed_args.train_data,
+                test_data=parsed_args.test_data,
                 hidden_layers=parsed_args.layer,
                 epochs=parsed_args.epochs,
                 batch_size=parsed_args.batch_size,
                 learning_rate=parsed_args.learning_rate,
                 model_out=parsed_args.model_out,
                 plot_out=parsed_args.plot_out,
-                seed=parsed_args.seed
             )
         elif parsed_args.predict:
             ModelPredictor.run(
@@ -160,8 +163,10 @@ class MLPApp:
 
 
 def main():
-    MLPApp.run()
-
+    try:
+        MLPApp.run()
+    except Exception as e:
+        print(f"Error occurred: {e}")
 
 if __name__ == "__main__":
     main()
