@@ -37,6 +37,28 @@ python -m src.train --dataset data/train.csv --val_dataset data/test.csv --layer
 python -m src.predict --dataset data/test.csv --model output/saved_model.json
 ```
 
+### Create a network in Python
+
+`DenseLayer` describes one fully connected layer. The final layer has one
+sigmoid unit because this project predicts a binary label (`M` or `B`).
+
+```python
+from src.model import DenseLayer, MultilayerPerceptron
+
+model = MultilayerPerceptron(seed=42)
+model.add(DenseLayer(24, activation="sigmoid"))  # hidden layer 1
+model.add(DenseLayer(24, activation="sigmoid"))  # hidden layer 2
+model.add(DenseLayer(1, activation="sigmoid"))   # binary output
+```
+
+The trainer creates that same pattern automatically from `--layer 24 24`:
+
+```python
+from src.train import ModelTrainer
+
+model = ModelTrainer.create_network([24, 24], seed=42)
+```
+
 ---
 
 ## Clean & Compact Structure

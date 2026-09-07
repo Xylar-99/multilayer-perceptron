@@ -113,6 +113,7 @@ class MLPApp:
         train_group.add_argument("--epochs", type=int, default=84, help="Number of training epochs (default: 84)")
         train_group.add_argument("--batch_size", type=int, default=8, help="Mini-batch size (default: 8)")
         train_group.add_argument("--learning_rate", type=float, default=0.0314, help="Learning rate (default: 0.0314)")
+        train_group.add_argument("--seed", type=int, default=42, help="Random seed for reproducible training (default: 42)")
         train_group.add_argument("--model_out", type=str, default="output/saved_model.json", help="Path to save trained model")
         train_group.add_argument("--plot_out", type=str, default="output/learning_curves.png", help="Path to save learning curves plot")
 
@@ -154,6 +155,7 @@ class MLPApp:
                 learning_rate=parsed_args.learning_rate,
                 model_out=parsed_args.model_out,
                 plot_out=parsed_args.plot_out,
+                seed=parsed_args.seed,
             )
         elif parsed_args.predict:
             ModelPredictor.run(
