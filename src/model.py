@@ -182,8 +182,6 @@ class BinaryCrossEntropy:
     @staticmethod
     def compute(y_true, y_pred):
         """Compute BCE loss value."""
-        
-        # reutrn  BCE loss value
         return -np.mean(y_true * np.log(y_pred + 1e-15) + (1 - y_true) * np.log(1 - y_pred + 1e-15))
 
 
@@ -191,8 +189,7 @@ class BinaryCrossEntropy:
     def gradient(y_true, y_pred, eps=1e-15):
         """Compute loss derivative with respect to prediction."""
         
-        # return BCE gradient
-        return (y_pred - y_true) / (y_pred * (1 - y_pred) + eps) 
+        return y_true - y_pred;
 
 
 
@@ -224,7 +221,7 @@ class MultilayerPerceptron:
         for i in reversed(range(len(self.layers))):
             layer = self.layers[i]
             if i == len(self.layers) - 1:
-                grad = BinaryCrossEntropy.gradient(y_true, y_pred)
+                grad = CategoricalCrossEntropy.gradient(y_true, y_pred)
             else:
                 grad = self.layers[i + 1].backward(grad)
             layer.backward(grad)
@@ -232,7 +229,10 @@ class MultilayerPerceptron:
 
     def fit(self, train_data, val_data=None, epochs=84, batch_size=8, learning_rate=0.0314):
         """Train the neural network using mini-batch gradient descent."""
-        pass
+
+        
+        
+
 
     def predict_proba(self, X):
         """Return predicted probability distribution for input X."""
