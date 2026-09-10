@@ -14,7 +14,7 @@ class ModelTrainer:
         layer_units = list(hidden_layers) + [2]
         model = MultilayerPerceptron(seed=seed)
         for units in layer_units:
-            activation = "softmax" if units == 2 else "relu"
+            activation = "sigmoid" if units == 2 else "relu"
             model.add(DenseLayer(units, activation))
             model.layers[-1].build(input_features, rng=model.rng)
             input_features = units
@@ -24,23 +24,41 @@ class ModelTrainer:
 
     @staticmethod
     def run(train_data, test_data, hidden_layers, epochs, batch_size, learning_rate, model_out, plot_out, seed=42):
+        """Build a network and display its initial training-set probabilities.
 
+        The remaining arguments are retained for the CLI training interface; the
+        current implementation performs the requested initial forward pass.
+        """
         training = Dataset.load_csv(train_data).cleanup()
         input_features = training.X.shape[1]
         model = ModelTrainer.create_network(hidden_layers, input_features, seed=seed)
 
-        A = model.forward(training.X)
+        # A = model.forward(training.X)
 
+        # # Print predictions for each row in the training set
+        # for i, pred in enumerate(A):
+        #     benign_prob = pred[0] * 100
+        #     malignant_prob = pred[1] * 100
+        #     print(f"Row {i+1} -> Benign: {benign_prob:.2f}% | Malignant: {malignant_prob:.2f}%")
 
-
-
-        # Print predictions for each row in the training set
-        for i, pred in enumerate(A):
-            benign_prob = pred[0] * 100
-            malignant_prob = pred[1] * 100
-            print(f"Row {i+1} -> Benign: {benign_prob:.2f}% | Malignant: {malignant_prob:.2f}%")
         
-        pass
+        for _  in range(epochs):
+            y_predc = model.forward(training.X)
+
+
+            # #########################
+            for i, pred in enumerate(A):
+                benign_prob = pred[0] * 100
+                malignant_prob = pred[1] * 100
+                print(f"Row {i+1} -> Benign: {benign_prob:.2f}% | Malignant: {malignant_prob:.2f}%")
+            # #########################
+
+
+            model.backward()    
+            
+
+
+        # return model
 
     @staticmethod
     def plot_curves(history, save_path="output/learning_curves.png"):

@@ -22,9 +22,8 @@ class Dataset:
         self.y = data["y"].values
         return self
 
-    def split(self, train_ratio, seed):
+    def split(self, train_ratio):
         """Split this dataset into train and test datasets."""
-        np.random.seed(seed)
         indices = np.random.permutation(len(self.X))
         train_size = int(train_ratio * len(self.X))
         train_indices = indices[:train_size]

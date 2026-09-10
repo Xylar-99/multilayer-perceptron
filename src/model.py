@@ -16,10 +16,16 @@ class Sigmoid:
     @staticmethod
     def backward(dA, Z=None, A=None):
         """Compute gradient: dA * A * (1 - A)"""
-        pass
+        if A is None:
+            A = Sigmoid.forward(Z)
+        return dA * A * (1 - A)
+
+
+
 
 class Softmax:
-    """Softmax activation on output layer: e^(z_i) / sum(e^(z_j))"""
+    """Softmax activation: e^(z_i) / sum(e^(z_j))"""
+
     @staticmethod
     def forward(Z):
         """Compute stable softmax probability distribution."""
@@ -28,8 +34,28 @@ class Softmax:
 
     @staticmethod
     def backward(dA, Z=None, A=None):
-        """Compute softmax derivative."""
-        pass
+        """Backpropagate gradient through softmax."""
+
+        if A is None:
+            if Z is None:
+                raise ValueError("Either Z or A must be provided")
+            A = Softmax.forward(Z)
+
+        dZ = np.zeros_like(A)
+
+        for i in range(A.shape[0]):  # each sample
+            a = A[i]
+
+            # Softmax Jacobian:
+            # J = diag(a) - a @ a.T
+            J = np.diag(a) - np.outer(a, a)
+
+            # dZ = dA @ J
+            dZ[i] = dA[i] @ J
+
+        return dZ
+    
+
 
 class ReLU:
     """ReLU activation: g(z) = max(0, z)"""
@@ -41,7 +67,27 @@ class ReLU:
     @staticmethod
     def backward(dA, Z=None, A=None):
         """Compute ReLU derivative."""
-        pass
+        if A is None:
+            A = ReLU.forward(Z)
+        dZ = np.array(dA, copy=True)
+        dZ[Z <= 0] = 0
+        return dZ
+
+
+
+class Tanh:
+    """Tanh activation: g(z) = (e^z - e^-z) / (e^z + e^-z)"""
+    @staticmethod
+    def forward(Z):
+        """Compute Tanh activation."""
+        return np.tanh(Z)
+
+    @staticmethod
+    def backward(dA, Z=None, A=None):
+        """Compute Tanh derivative."""
+        if A is None:
+            A = Tanh.forward(Z)
+        return dA * (1 - A ** 2)
 
 
 
@@ -91,8 +137,44 @@ class DenseLayer:
 
     def backward(self, grad, is_delta=False):
         """Backward pass: compute dW, db, and return dX for previous layer."""
-        pass
+        
+        if self.activation_name == "relu":
+            dZ = ReLU.backward(grad, Z=self.Z, A=self.A)
+        elif self.activation_name == "softmax":
+            dZ = Softmax.backward(grad, Z=self.Z, A=self.A)
+        elif self.activation_name == "sigmoid":
+            dZ = Sigmoid.backward(grad, Z=self.Z, A=self.A)
+        else:
+            raise ValueError(f"Unsupported activation: {self.activation_name}")
+        
 
+
+
+class CategoricalCrossEntropy:
+    """Categorical Cross-Entropy Loss."""
+
+    @staticmethod
+    def compute(y_true, y_pred):
+        """Compute CCE loss value."""
+
+        eps = 1e-15
+        y_pred = np.clip(y_pred, eps, 1 - eps)
+
+        N = y_true.shape[0]
+
+        loss = -np.sum(y_true * np.log(y_pred)) / N
+
+        return loss
+
+    @staticmethod
+    def gradient(y_true, y_pred, eps=1e-15):
+        """Compute loss derivative with respect to prediction."""
+
+        y_pred = np.clip(y_pred, eps, 1 - eps)
+
+        N = y_true.shape[0]
+
+        return -(y_true / y_pred) / N
 
 
 class BinaryCrossEntropy:
@@ -146,6 +228,7 @@ class MultilayerPerceptron:
             else:
                 grad = self.layers[i + 1].backward(grad)
             layer.backward(grad)
+
 
     def fit(self, train_data, val_data=None, epochs=84, batch_size=8, learning_rate=0.0314):
         """Train the neural network using mini-batch gradient descent."""

@@ -103,7 +103,6 @@ class MLPApp:
         split_group.add_argument("--test_out", type=str, default="data/test.csv", help="Destination path for test CSV")
         split_group.add_argument("--scaler_out", type=str, default="output/scaler.json", help="Destination path for scaler parameters")
         split_group.add_argument("--ratio", type=float, default=0.8, help="Training split ratio (default: 0.8)")
-        split_group.add_argument("--seed", type=int, default=42, help="Random seed for reproducible shuffling")
 
         # Train Options
         train_group = parser.add_argument_group("Options for --train")
@@ -143,7 +142,6 @@ class MLPApp:
                 test_out=parsed_args.test_out,
                 scaler_out=parsed_args.scaler_out,
                 ratio=parsed_args.ratio,
-                seed=parsed_args.seed
             )
         elif parsed_args.train:
             ModelTrainer.run(

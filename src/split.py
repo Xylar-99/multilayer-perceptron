@@ -11,13 +11,13 @@ class DataSplitter:
         return dataset
 
     @staticmethod
-    def run(dataset_path, train_out, test_out, scaler_out, ratio, seed):
+    def run(dataset_path, train_out, test_out, scaler_out, ratio):
 
         # 1. Load + cleanup
         dataset = DataSplitter.preprocess(dataset_path)
 
         # 2. Split
-        train_data, test_data = dataset.split(train_ratio=ratio, seed=seed)
+        train_data, test_data = dataset.split(train_ratio=ratio)
 
         # 3. Fit scaler ONLY on train
         scaler = train_data.fit_scaler()
