@@ -218,17 +218,25 @@ class MultilayerPerceptron:
 
     def backward(self, y_true, y_pred):
         """Backpropagate error from output layer to input layer."""
+
         for i in reversed(range(len(self.layers))):
             layer = self.layers[i]
             if i == len(self.layers) - 1:
-                grad = CategoricalCrossEntropy.gradient(y_true, y_pred)
+                grad = y_pred - y_true
             else:
                 grad = self.layers[i + 1].backward(grad)
             layer.backward(grad)
 
 
-    def fit(self, train_data, val_data=None, epochs=84, batch_size=8, learning_rate=0.0314):
+    def fit(self, train_data ,  epochs , learning_rate):
         """Train the neural network using mini-batch gradient descent."""
+
+        for _ in range(epochs):
+            for start in range(train_data.X.shape[0]):
+                y_pred = self.forward(train_data.X[start:start + 1])
+                self.backward(train_data.y[start:start + 1], y_pred)
+
+            
 
         
         

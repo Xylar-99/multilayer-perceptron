@@ -7,6 +7,7 @@ from .model import DenseLayer, MultilayerPerceptron
 
 class ModelTrainer:
     """Build, train, save, and plot a sequential MLP."""
+
     @staticmethod
     def create_network(hidden_layers, input_features, seed=42):
         """Build ``input -> hidden sigmoid layers -> one sigmoid output``."""
@@ -31,34 +32,11 @@ class ModelTrainer:
         """
         training = Dataset.load_csv(train_data).cleanup()
         input_features = training.X.shape[1]
-        model = ModelTrainer.create_network(hidden_layers, input_features, seed=seed)
+        model = ModelTrainer.create_network(hidden_layers, input_features, seed)
 
-        # A = model.forward(training.X)
+        model.fit(training, epochs, learning_rate)
 
-        # # Print predictions for each row in the training set
-        # for i, pred in enumerate(A):
-        #     benign_prob = pred[0] * 100
-        #     malignant_prob = pred[1] * 100
-        #     print(f"Row {i+1} -> Benign: {benign_prob:.2f}% | Malignant: {malignant_prob:.2f}%")
-
-        
-        for _  in range(epochs):
-            y_predc = model.forward(training.X)
-
-
-            # #########################
-            for i, pred in enumerate(A):
-                benign_prob = pred[0] * 100
-                malignant_prob = pred[1] * 100
-                print(f"Row {i+1} -> Benign: {benign_prob:.2f}% | Malignant: {malignant_prob:.2f}%")
-            # #########################
-
-
-            model.backward()    
-            
-
-
-        # return model
+        return model
 
     @staticmethod
     def plot_curves(history, save_path="output/learning_curves.png"):
@@ -75,3 +53,4 @@ class ModelTrainer:
         # axes[1].set(title="Accuracy", xlabel="Epoch", ylabel="Accuracy")
         # axes[0].legend(); axes[1].legend()
         # figure.tight_layout(); figure.savefig(save_path, dpi=150); plt.close(figure)
+dd
