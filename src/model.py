@@ -1,7 +1,6 @@
 import numpy as np
 import json
 import os
-import pandas as pd
 
 
 
@@ -10,8 +9,17 @@ class Sigmoid:
     """Sigmoid activation: sigma(z) = 1 / (1 + e^(-z))"""
     @staticmethod
     def forward(Z):
-        """Compute sigmoid activation."""
-        return 1 / (1 + np.exp(-Z))
+        """Compute sigmoid without overflowing for large values."""
+        Z = np.asarray(Z, dtype=float)
+        result = np.empty_like(Z)
+
+        positive = Z >= 0
+        result[positive] = 1 / (1 + np.exp(-Z[positive]))
+
+        exp_Z = np.exp(Z[~positive])
+        result[~positive] = exp_Z / (1 + exp_Z)
+
+        return result
 
     @staticmethod
     def backward(dA, Z=None, A=None):
@@ -112,11 +120,20 @@ class DenseLayer:
         self.A = None
 
     def build(self, input_features, rng=None):
-        """Initialize weights W (He/Xavier) and biases b."""
+        """Initialize small weights and zero biases."""
         self.input_features = input_features
 
         rng = rng or np.random.default_rng()
-        self.W = rng.standard_normal((self.input_features, self.units))
+        if self.activation_name == "relu":
+            standard_deviation = np.sqrt(2 / input_features)
+        else:
+            standard_deviation = np.sqrt(1 / input_features)
+
+        self.W = rng.normal(
+            0,
+            standard_deviation,
+            (self.input_features, self.units),
+        )
         self.b = np.zeros((1, self.units))
 
 
@@ -135,19 +152,27 @@ class DenseLayer:
         return self.A
 
 
-    def backward(self, grad, is_delta=False):
-        """Backward pass: compute dW, db, and return dX for previous layer."""
-        
-        if self.activation_name == "relu":
-            dZ = ReLU.backward(grad, Z=self.Z, A=self.A)
+    def backward(self, gradient, output_layer=False):
+        """Calculate gradients and return the gradient for the previous layer."""
+
+        # The output gradient from sigmoid + binary cross-entropy is already dZ.
+        if output_layer:
+            dZ = gradient
+        elif self.activation_name == "relu":
+            dZ = ReLU.backward(gradient, Z=self.Z, A=self.A)
         elif self.activation_name == "softmax":
-            dZ = Softmax.backward(grad, Z=self.Z, A=self.A)
+            dZ = Softmax.backward(gradient, Z=self.Z, A=self.A)
         elif self.activation_name == "sigmoid":
-            dZ = Sigmoid.backward(grad, Z=self.Z, A=self.A)
+            dZ = Sigmoid.backward(gradient, Z=self.Z, A=self.A)
+        elif self.activation_name == "tanh":
+            dZ = Tanh.backward(gradient, Z=self.Z, A=self.A)
         else:
             raise ValueError(f"Unsupported activation: {self.activation_name}")
-        
 
+        batch_size = self.inputs.shape[0]
+        self.dW = np.dot(self.inputs.T, dZ) / batch_size
+        self.db = np.sum(dZ, axis=0, keepdims=True) / batch_size
+        return np.dot(dZ, self.W.T)
 
 
 class CategoricalCrossEntropy:
@@ -182,14 +207,18 @@ class BinaryCrossEntropy:
     @staticmethod
     def compute(y_true, y_pred):
         """Compute BCE loss value."""
-        return -np.mean(y_true * np.log(y_pred + 1e-15) + (1 - y_true) * np.log(1 - y_pred + 1e-15))
+        y_pred = np.clip(y_pred, 1e-15, 1 - 1e-15)
+        return -np.mean(
+            y_true * np.log(y_pred)
+            + (1 - y_true) * np.log(1 - y_pred)
+        )
 
 
     @staticmethod
     def gradient(y_true, y_pred, eps=1e-15):
         """Compute loss derivative with respect to prediction."""
-        
-        return y_true - y_pred;
+        y_pred = np.clip(y_pred, eps, 1 - eps)
+        return -(y_true / y_pred) + ((1 - y_true) / (1 - y_pred))
 
 
 
@@ -203,63 +232,180 @@ class MultilayerPerceptron:
         self.layers = layers or []
         self.seed = seed
         self.rng = np.random.default_rng(seed)
+        self.history = {"loss": [], "accuracy": []}
+        self.scaler = None
+
     def add(self, layer):
         """Append a DenseLayer to the network."""
         self.layers.append(layer)
         return self
         
-
     def forward(self, X):
         """Propagate input X sequentially through all layers."""
-        
         for layer in self.layers:
             X = layer.forward(X)
         return X
 
     def backward(self, y_true, y_pred):
         """Backpropagate error from output layer to input layer."""
+        dA = self.layers[-1].backward(
+            y_pred - y_true,
+            output_layer=True,
+        )
+        for layer in reversed(self.layers[:-1]):
+            dA = layer.backward(dA)
+        return dA
 
-        for i in reversed(range(len(self.layers))):
-            layer = self.layers[i]
-            if i == len(self.layers) - 1:
-                grad = y_pred - y_true
-            else:
-                grad = self.layers[i + 1].backward(grad)
-            layer.backward(grad)
 
-
-    def fit(self, train_data ,  epochs , learning_rate):
+    def fit(self, X, y, epochs, batch_size, learning_rate):
         """Train the neural network using mini-batch gradient descent."""
+        if len(self.layers) == 0:
+            raise ValueError("Add at least one layer before training")
+        if batch_size <= 0:
+            raise ValueError("batch_size must be greater than 0")
 
-        for _ in range(epochs):
-            for start in range(train_data.X.shape[0]):
-                y_pred = self.forward(train_data.X[start:start + 1])
-                self.backward(train_data.y[start:start + 1], y_pred)
+        X = np.asarray(X, dtype=float)
+        y = np.asarray(y)
 
-            
+        if len(X) != len(y):
+            raise ValueError("X and y must contain the same number of examples")
 
-        
+        # Convert text labels to 0/1 and make labels column-shaped.
+        if y.dtype.kind in {"U", "S", "O"}:
+            y = (y == "M").astype(float)
+        y = y.astype(float).reshape(-1, 1)
+
+        number_of_samples = len(X)
+
+        np.random.seed(self.seed)
+        self.history = {"loss": [], "accuracy": []}
+
+        # Train the network several times over the whole dataset.
+        for epoch in range(epochs):
+            indexes = np.arange(number_of_samples)
+            np.random.shuffle(indexes)
+
+            for start in range(0, number_of_samples, batch_size):
+                end = start + batch_size
+                batch_indexes = indexes[start:end]
+
+                batch_X = X[batch_indexes]
+                batch_y = y[batch_indexes]
+
+                predictions = self.forward(batch_X)
+                self.backward(batch_y, predictions)
+
+                for layer in self.layers:
+                    layer.W -= learning_rate * layer.dW
+                    layer.b -= learning_rate * layer.db
+
+            results = self.evaluate(X, y)
+            self.history["loss"].append(results["loss"])
+            self.history["accuracy"].append(results["accuracy"])
+
+        return self
+
+
+
         
 
 
     def predict_proba(self, X):
         """Return predicted probability distribution for input X."""
-        pass
+        X = np.asarray(X, dtype=float)
+        return self.forward(X)
         
 
     def predict(self, X):
         """Return binary class prediction (0 or 1) for input X."""
-        pass
+        probabilities = self.predict_proba(X).reshape(-1)
+        return (probabilities >= 0.5).astype(int)
+
 
     def evaluate(self, X, y):
         """Compute BCE loss, accuracy, precision, recall, and confusion matrix."""
-        pass
+        X = np.asarray(X, dtype=float)
+        y = np.asarray(y)
+
+        # Convert text labels to 0/1.
+        if y.dtype.kind in {"U", "S", "O"}:
+            y = (y == "M").astype(int)
+        y_true = y.astype(int).reshape(-1)
+        probabilities = self.predict_proba(X).reshape(-1)
+        predictions = (probabilities >= 0.5).astype(int)
+
+        true_positive = np.sum((y_true == 1) & (predictions == 1))
+        true_negative = np.sum((y_true == 0) & (predictions == 0))
+        false_positive = np.sum((y_true == 0) & (predictions == 1))
+        false_negative = np.sum((y_true == 1) & (predictions == 0))
+
+        accuracy = np.mean(predictions == y_true)
+        if true_positive + false_positive > 0:
+            precision = true_positive / (true_positive + false_positive)
+        else:
+            precision = 0.0
+
+        if true_positive + false_negative > 0:
+            recall = true_positive / (true_positive + false_negative)
+        else:
+            recall = 0.0
+
+        return {
+            "loss": BinaryCrossEntropy.compute(y_true, probabilities),
+            "accuracy": accuracy,
+            "precision": precision,
+            "recall": recall,
+            "confusion_matrix": np.array([
+                [true_negative, false_positive],
+                [false_negative, true_positive],
+            ]),
+        }
+
 
     def save(self, filepath):
         """Save model topology, weights, biases, and scaler to JSON."""
-        pass
+        model_data = {
+            "seed": self.seed,
+            "layers": [],
+            "scaler": getattr(self, "scaler", None),
+        }
+
+        for layer in self.layers:
+            model_data["layers"].append({
+                "units": layer.units,
+                "activation": layer.activation_name,
+                "weights": layer.W.tolist(),
+                "biases": layer.b.tolist(),
+            })
+
+        folder = os.path.dirname(filepath)
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+
+        with open(filepath, "w", encoding="utf-8") as file:
+            json.dump(model_data, file, indent=4)
+
 
     @classmethod
     def load(cls, filepath):
         """Load model topology, weights, biases, and scaler from JSON."""
-        pass
+        with open(filepath, "r", encoding="utf-8") as file:
+            model_data = json.load(file)
+
+        model = cls(seed=model_data.get("seed", 42))
+
+        for saved_layer in model_data["layers"]:
+            weights = np.array(saved_layer["weights"], dtype=float)
+            biases = np.array(saved_layer["biases"], dtype=float)
+
+            layer = DenseLayer(
+                saved_layer["units"],
+                saved_layer["activation"],
+            )
+            layer.build(weights.shape[0], rng=model.rng)
+            layer.W = weights
+            layer.b = biases
+            model.add(layer)
+
+        model.scaler = model_data.get("scaler")
+        return model

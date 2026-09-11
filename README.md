@@ -101,3 +101,49 @@ multilayer-perceptron/
 | **Model Persistence** | Saved in human-readable JSON (with full support for `.npy` format as well) |
 | **Binary Cross-Entropy** | Prediction evaluated with exact subject formula $E = -\frac{1}{N}\sum [y\log p + (1-y)\log(1-p)]$ |
 | **Bonus Optimizers** | Mini-batch SGD, SGD with Momentum, RMSprop, and Adam |
+
+## Simple Training Flow
+
+Run the commands in this order:
+
+```bash
+python3 mlp.py --split --dataset data/data.csv
+python3 mlp.py --train --epochs 84 --batch_size 8 --learning_rate 0.01
+python3 mlp.py --predict
+```
+
+The split step saves the feature scaler. Training saves the same scaler inside
+the model file, so prediction can also work with the original unscaled CSV.
+
+The network uses this simple structure:
+
+```text
+features -> ReLU hidden layers -> one sigmoid output
+```
+
+The sigmoid output is a probability. A probability of `0.5` or higher becomes
+class `1`; otherwise it becomes class `0`. In this dataset, `M` is converted to
+`1` and `B` is converted to `0`.
+
+During training, the model shuffles the rows, trains one mini-batch at a time,
+updates the weights, and records loss and accuracy. The training command saves
+the learning plot to `output/learning_curves.png`.
+
+Prediction accepts two kinds of CSV files:
+
+- A labeled file with 30 feature columns and an `M`/`B` column. It returns
+  loss, accuracy, precision, recall, and a confusion matrix.
+- A feature-only file with 30 numeric columns. It returns one probability and
+  one class for every row. You can also include an ID as the first column.
+
+For a feature-only file, class `1` means `M` and class `0` means `B`:
+
+```text
+Row 1: class=1, probability=0.9321
+Row 2: class=0, probability=0.1045
+```
+
+The sigmoid implementation uses separate positive and negative calculations.
+This avoids `exp()` overflow when a value is very large or very small. Weights
+are also initialized with small values, which prevents the network from
+starting with saturated sigmoid outputs and predicting only one class.
