@@ -23,8 +23,9 @@ class ModelTrainer:
         return model
 
 
+
     @staticmethod
-    def run(train_data, test_data, hidden_layers, epochs, batch_size, learning_rate, model_out, plot_out, seed=42):
+    def run(train_data, test_data ,hidden_layers, epochs, batch_size, learning_rate, model_out, plot_out, seed=42):
         """Build, train, evaluate, plot, and save a model."""
         training = Dataset.load_csv(train_data).cleanup()
         input_features = training.X.shape[1]
