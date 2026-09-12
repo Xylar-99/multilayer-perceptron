@@ -1,116 +1,141 @@
-import os
 import json
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
 
 class Dataset:
-    """
-    Encapsulates data arrays (features X, labels y).
-    """
+    """Store feature values (``X``) and their labels (``y``)."""
 
     def __init__(self, X=None, y=None):
         self.X = X
         self.y = y
 
+    @staticmethod
+    def load_csv(filepath):
+        """Load a labeled CSV file and return its features and diagnoses."""
+        raw_data = pd.read_csv(filepath, header=None)
+        diagnosis_column = Dataset._find_diagnosis_column(raw_data)
+
+        if diagnosis_column is None:
+            raise ValueError("Diagnosis column not found")
+
+        features = Dataset._extract_features(raw_data, diagnosis_column)
+        labels = raw_data.iloc[:, diagnosis_column].to_numpy()
+        return Dataset(features, labels)
+
     def cleanup(self):
-        """Clean missing or invalid values."""
-        data = pd.DataFrame(self.X)
-        data["y"] = self.y
-        data = data.dropna()
-        self.X = data.drop(columns=["y"]).values
-        self.y = data["y"].values
+        """Remove rows with a missing feature value or diagnosis."""
+        combined_data = self._combine_features_and_labels()
+        complete_rows = combined_data.dropna()
+
+        self.X = complete_rows.iloc[:, :-1].to_numpy()
+        self.y = complete_rows.iloc[:, -1].to_numpy()
         return self
 
-    def split(self, train_ratio):
-        """Split this dataset into train and test datasets."""
-        indices = np.random.permutation(len(self.X))
-        train_size = int(train_ratio * len(self.X))
-        train_indices = indices[:train_size]
-        test_indices = indices[train_size:]
+    def split(self, train_ratio, rng=None):
+        """Randomly split this dataset into training and test datasets.
 
-        train_X = self.X[train_indices]
-        train_y = self.y[train_indices]
-        test_X = self.X[test_indices]
-        test_y = self.y[test_indices]
+        Pass a NumPy random generator through ``rng`` when a repeatable split
+        is needed. Without one, this keeps using NumPy's normal global random
+        state, as before.
+        """
+        number_of_samples = len(self.X)
+        random_generator = rng if rng is not None else np.random
+        shuffled_indices = random_generator.permutation(number_of_samples)
 
-        return Dataset(train_X, train_y), Dataset(test_X, test_y)
+        train_size = int(train_ratio * number_of_samples)
+        train_indices = shuffled_indices[:train_size]
+        test_indices = shuffled_indices[train_size:]
+
+        train_dataset = Dataset(self.X[train_indices], self.y[train_indices])
+        test_dataset = Dataset(self.X[test_indices], self.y[test_indices])
+        return train_dataset, test_dataset
 
     def fit_scaler(self):
-        """
-        Fit Min-Max scaler ONLY on this dataset (train set).
-        Returns a dictionary with min and max for each feature.
-        """
-        X_arr = np.asarray(self.X, dtype=np.float64)
-        scaler = {
+        """Fit a Min-Max scaler using only this dataset's feature values."""
+        features = np.asarray(self.X, dtype=np.float64)
+        feature_minimums = np.min(features, axis=0)
+        feature_maximums = np.max(features, axis=0)
+
+        return {
             "type": "minmax",
-            "min": np.min(X_arr, axis=0).tolist(),
-            "max": np.max(X_arr, axis=0).tolist()
+            "min": feature_minimums.tolist(),
+            "max": feature_maximums.tolist(),
         }
-        return scaler
 
     def scale(self, scaler):
-        """
-        Scale this dataset using an existing scaler:
-        X_scaled = (X - min) / (max - min)
-        """
+        """Scale features with an already-fitted Min-Max scaler."""
         if scaler is None:
             return self
 
-        X_arr = np.asarray(self.X, dtype=np.float64)
-        min_val = np.array(scaler["min"], dtype=np.float64)
-        max_val = np.array(scaler["max"], dtype=np.float64)
+        features = np.asarray(self.X, dtype=np.float64)
+        feature_minimums = np.asarray(scaler["min"], dtype=np.float64)
+        feature_maximums = np.asarray(scaler["max"], dtype=np.float64)
 
-        diff = max_val - min_val
-        # Prevent division by zero if max == min
-        diff[diff == 0.0] = 1.0
+        feature_ranges = feature_maximums - feature_minimums
+        # A constant feature has no range, so divide it by one instead of zero.
+        feature_ranges[feature_ranges == 0.0] = 1.0
 
-        self.X = (X_arr - min_val) / diff
+        self.X = (features - feature_minimums) / feature_ranges
         return self
 
     def save_csv(self, filepath):
-        """Save this dataset to CSV."""
-        data = pd.DataFrame(self.X)
-        data["y"] = self.y
-        data.to_csv(filepath, index=False, header=False)
+        """Save features and labels to a headerless CSV file."""
+        self._create_parent_directory(filepath)
+
+        combined_data = self._combine_features_and_labels()
+        combined_data.to_csv(filepath, index=False, header=False)
 
     @staticmethod
     def save_scaler(scaler, filepath):
-        """Save scaler parameters to JSON file using standard json library."""
+        """Save scaler parameters in a JSON file."""
+        Dataset._create_parent_directory(filepath)
 
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(scaler, f, indent=4)
-
+        with open(filepath, "w", encoding="utf-8") as file:
+            json.dump(scaler, file, indent=4)
 
     @staticmethod
     def load_scaler(filepath):
-        """Load scaler parameters from JSON file using standard json library."""
-        with open(filepath, "r", encoding="utf-8") as f:
-            scaler = json.load(f)
-        return scaler
-
+        """Load scaler parameters from a JSON file."""
+        with open(filepath, "r", encoding="utf-8") as file:
+            return json.load(file)
 
     @staticmethod
-    def load_csv(filepath):
-        """Load CSV using pandas and return a Dataset object."""
-        raw_data = pd.read_csv(filepath, header=None)
-        diagnosis_col = None
+    def _find_diagnosis_column(raw_data):
+        """Return the column that contains only ``M`` and ``B`` labels."""
+        for column in raw_data.columns:
+            non_missing_values = raw_data[column].dropna()
+            diagnosis_values = set(
+                non_missing_values.astype(str).str.strip()
+            )
 
-        for col in raw_data.columns:
-            values = set(raw_data[col].dropna().astype(str).str.strip())
-            if values.issubset({"M", "B"}) and len(values) > 0:
-                diagnosis_col = col
-                break
+            if diagnosis_values and diagnosis_values.issubset({"M", "B"}):
+                return column
 
-        if diagnosis_col is None:
-            raise ValueError("Diagnosis column not found")
+        return None
 
-        y = raw_data.iloc[:, diagnosis_col].values
+    @staticmethod
+    def _extract_features(raw_data, diagnosis_column):
+        """Remove the diagnosis and the optional identifier column."""
+        columns_to_remove = [diagnosis_column]
+        has_identifier_column = (
+            diagnosis_column != 0 and len(raw_data.columns) > 31
+        )
 
-        # Drop diagnosis column and column 0 (ID) if present
-        cols_to_drop = [diagnosis_col]
-        if 0 not in cols_to_drop and len(raw_data.columns) > 31:
-            cols_to_drop.append(0)
+        if has_identifier_column:
+            columns_to_remove.append(0)
 
-        X = raw_data.drop(columns=cols_to_drop).values
-        return Dataset(X, y)
+        return raw_data.drop(columns=columns_to_remove).to_numpy()
+
+    def _combine_features_and_labels(self):
+        """Build one table so rows can be cleaned or saved together."""
+        feature_data = pd.DataFrame(self.X)
+        label_data = pd.Series(self.y)
+        return pd.concat([feature_data, label_data], axis=1)
+
+    @staticmethod
+    def _create_parent_directory(filepath):
+        """Create the destination directory when it does not exist yet."""
+        Path(filepath).parent.mkdir(parents=True, exist_ok=True)

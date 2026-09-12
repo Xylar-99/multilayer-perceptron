@@ -1,149 +1,141 @@
 # Multilayer Perceptron — Breast Cancer Classification
 
-A clean, from-scratch implementation of a **Multilayer Perceptron (MLP)** for the Wisconsin Breast Cancer dataset, built using only pure Python, NumPy, and Matplotlib (no ML libraries allowed).
+This project implements a binary Multilayer Perceptron (MLP) from scratch
+with NumPy. It classifies the Wisconsin Breast Cancer labels:
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full modular design breakdown, mathematical derivations, and defense preparation.
+- `M` (malignant) becomes `1`.
+- `B` (benign) becomes `0`.
 
----
+The code is deliberately organized so that each class has one main job and
+its public workflow methods read from the big picture down to the details.
 
-## Quick Start
+## Project flow
 
-### 1. Requirements
-```bash
-pip install -r requirements.txt
+```text
+raw CSV
+  -> Dataset loads and cleans the rows
+  -> DataSplitter creates train/test files and a train-only Min-Max scaler
+  -> ModelTrainer builds, trains, evaluates, plots, and saves the MLP
+  -> ModelPredictor loads the model and evaluates or predicts
 ```
 
-### 2. Single Program Mode (`mlp.py`)
+The network created by `ModelTrainer` has this shape:
+
+```text
+input features -> ReLU hidden layer(s) -> sigmoid output
+```
+
+The sigmoid output is a probability. A probability of `0.5` or greater is
+reported as class `1`.
+
+## Install dependencies
+
 ```bash
-# 1. Split dataset into train (80%) and validation/test (20%)
+python -m pip install -r requirements.txt
+```
+
+## Run the normal workflow
+
+Run these commands from the project root.
+
+```bash
+# 1. Shuffle, split, Min-Max scale, and save the data.
 python mlp.py --split --dataset data/data.csv --seed 42
 
-# 2. Train network with at least 2 hidden layers (default: 24 24)
-python mlp.py --train --layer 24 24 --epochs 84 --learning_rate 0.0314 --batch_size 8
+# 2. Train a model using the generated files.
+python mlp.py --train --layer 24 24 --epochs 84 --batch_size 8 --learning_rate 0.0314
 
-# 3. Predict & evaluate using Binary Cross-Entropy Loss
+# 3. Evaluate the saved model on the test set.
 python mlp.py --predict --dataset data/test.csv --model output/saved_model.json
 ```
 
-### 3. Modular Scripts Mode (`src/`)
+The split command creates `data/train.csv`, `data/test.csv`, and
+`output/scaler.json`. Training saves the scaler inside the model JSON, along
+with its layers, weights, and biases.
+
+### Use custom output paths
+
+If the scaler is not saved at the default location, pass its path when
+training so the exact train-set scaler is stored with the model:
+
 ```bash
-# Split
-python -m src.split --dataset data/data.csv --seed 42
+python mlp.py --split \
+  --train_out prepared/train.csv \
+  --test_out prepared/test.csv \
+  --scaler_out prepared/scaler.json \
+  --seed 42
 
-# Train
-python -m src.train --dataset data/train.csv --val_dataset data/test.csv --layer 24 24 --epochs 84
-
-# Predict
-python -m src.predict --dataset data/test.csv --model output/saved_model.json
+python mlp.py --train \
+  --train_data prepared/train.csv \
+  --test_data prepared/test.csv \
+  --scaler prepared/scaler.json \
+  --model_out prepared/model.json
 ```
 
-### Create a network in Python
+`--scaler` is also available with `--predict` when an older model does not
+contain a scaler or when you deliberately need to override the saved one.
 
-`DenseLayer` describes one fully connected layer. The final layer has one
-sigmoid unit because this project predicts a binary label (`M` or `B`).
+## What each file does
+
+| File | Responsibility |
+| --- | --- |
+| `mlp.py` | Validates command-line options and starts split, train, or predict mode. |
+| `src/data.py` | Loads labeled CSV files, cleans rows, splits data, scales features, and saves data/scalers. |
+| `src/split.py` | Coordinates the preprocessing → split → scaler-fit → scale → save workflow. |
+| `src/model.py` | Contains activation functions, loss functions, dense layers, backpropagation, evaluation, and model persistence. |
+| `src/train.py` | Builds the network and coordinates training, test evaluation, plotting, and saving. |
+| `src/predict.py` | Loads a model and either evaluates labeled data or predicts feature-only rows. |
+
+## The important training math
+
+For each dense layer, the forward pass is:
+
+```text
+Z = inputs @ weights + biases
+A = activation(Z)
+```
+
+For this binary classifier, the final activation is sigmoid and the loss is
+binary cross-entropy. Their combined output-layer gradient is:
+
+```text
+dZ = predicted_probability - true_label
+```
+
+Each layer then calculates:
+
+```text
+dW = inputs.T @ dZ / batch_size
+db = sum(dZ) / batch_size
+dA_previous = dZ @ weights.T
+```
+
+Training shuffles the rows, works through mini-batches, updates each layer,
+and records loss and accuracy after every epoch.
+
+## Use the model in Python
 
 ```python
 from src.model import DenseLayer, MultilayerPerceptron
 
 model = MultilayerPerceptron(seed=42)
-model.add(DenseLayer(24, activation="sigmoid"))  # hidden layer 1
-model.add(DenseLayer(24, activation="sigmoid"))  # hidden layer 2
-model.add(DenseLayer(1, activation="sigmoid"))   # binary output
+first_layer = DenseLayer(24, activation="relu")
+first_layer.build(input_features=30, rng=model.rng)
+model.add(first_layer)
+
+output_layer = DenseLayer(1, activation="sigmoid")
+output_layer.build(input_features=24, rng=model.rng)
+model.add(output_layer)
 ```
 
-The trainer creates that same pattern automatically from `--layer 24 24`:
+For normal use, `ModelTrainer.create_network([24, 24], input_features=30)`
+builds this pattern for you.
 
-```python
-from src.train import ModelTrainer
+## CSV formats
 
-model = ModelTrainer.create_network([24, 24], seed=42)
-```
+The raw Wisconsin dataset contains an ID column, an `M`/`B` diagnosis column,
+and 30 numeric features. The generated train and test files contain the 30
+scaled features followed by the diagnosis column.
 
----
-
-## Clean & Compact Structure
-
-```
-multilayer-perceptron/
-├── data/
-│   ├── data.csv            # Original Wisconsin Diagnostic Breast Cancer dataset
-│   ├── train.csv           # Generated train split (80%)
-│   └── test.csv            # Generated validation/test split (20%)
-├── output/
-│   ├── saved_model.json    # Human-readable saved model (weights, biases, topology, scaler)
-│   └── learning_curves.png # Saved loss and accuracy learning curve graphs
-├── docs/
-│   └── ARCHITECTURE.md     # In-depth architectural & mathematical documentation
-├── src/
-│   ├── __init__.py
-│   ├── data.py             # Dataset loader, mini-batch generator & StandardScaler
-│   ├── model.py            # DenseLayer, Activations, Losses, Optimizers & MultilayerPerceptron
-│   ├── split.py            # Dataset split script
-│   ├── train.py            # Model training script
-│   └── predict.py          # Prediction & evaluation script
-├── mlp.py                  # Single-script CLI entry point
-├── requirements.txt        # Dependencies (numpy, matplotlib)
-└── README.md
-```
-
----
-
-## Features & Subject Compliance
-
-| Subject Requirement | Implementation |
-|---|---|
-| **No ML Libraries** | Coded from scratch in NumPy / Python standard library |
-| **Data Separation** | `src/split.py` / `mlp.py --split` with seed reproducibility & no data leakage |
-| **Standardization** | Z-score scaler fitted strictly on train data and stored in model JSON |
-| **Modular Topology** | `--layer 24 24 24` allows arbitrary hidden layer architectures |
-| **Softmax Output** | Softmax activation on output layer yielding probabilistic distributions |
-| **Learning Curves** | Epoch metrics logged + plots saved to `output/learning_curves.png` |
-| **Model Persistence** | Saved in human-readable JSON (with full support for `.npy` format as well) |
-| **Binary Cross-Entropy** | Prediction evaluated with exact subject formula $E = -\frac{1}{N}\sum [y\log p + (1-y)\log(1-p)]$ |
-| **Bonus Optimizers** | Mini-batch SGD, SGD with Momentum, RMSprop, and Adam |
-
-## Simple Training Flow
-
-Run the commands in this order:
-
-```bash
-python3 mlp.py --split --dataset data/data.csv
-python3 mlp.py --train --epochs 84 --batch_size 8 --learning_rate 0.01
-python3 mlp.py --predict
-```
-
-The split step saves the feature scaler. Training saves the same scaler inside
-the model file, so prediction can also work with the original unscaled CSV.
-
-The network uses this simple structure:
-
-```text
-features -> ReLU hidden layers -> one sigmoid output
-```
-
-The sigmoid output is a probability. A probability of `0.5` or higher becomes
-class `1`; otherwise it becomes class `0`. In this dataset, `M` is converted to
-`1` and `B` is converted to `0`.
-
-During training, the model shuffles the rows, trains one mini-batch at a time,
-updates the weights, and records loss and accuracy. The training command saves
-the learning plot to `output/learning_curves.png`.
-
-Prediction accepts two kinds of CSV files:
-
-- A labeled file with 30 feature columns and an `M`/`B` column. It returns
-  loss, accuracy, precision, recall, and a confusion matrix.
-- A feature-only file with 30 numeric columns. It returns one probability and
-  one class for every row. You can also include an ID as the first column.
-
-For a feature-only file, class `1` means `M` and class `0` means `B`:
-
-```text
-Row 1: class=1, probability=0.9321
-Row 2: class=0, probability=0.1045
-```
-
-The sigmoid implementation uses separate positive and negative calculations.
-This avoids `exp()` overflow when a value is very large or very small. Weights
-are also initialized with small values, which prevents the network from
-starting with saturated sigmoid outputs and predicting only one class.
+Prediction also supports a feature-only CSV with 30 numeric columns. A file
+with one leading ID column is accepted as well.
