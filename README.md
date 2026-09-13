@@ -13,13 +13,12 @@ its public workflow methods read from the big picture down to the details.
 
 ```text
 raw CSV
-  -> Dataset loads and cleans the rows
-  -> DataSplitter creates train/test files and a train-only Min-Max scaler
-  -> ModelTrainer builds, trains, evaluates, plots, and saves the MLP
-  -> ModelPredictor loads the model and evaluates or predicts
+  -> split_dataset loads, cleans, splits, and scales the rows
+  -> train_model builds, trains, evaluates, plots, and saves the MLP
+  -> predict_from_file loads the model and evaluates or predicts
 ```
 
-The network created by `ModelTrainer` has this shape:
+The network created by `create_network` has this shape:
 
 ```text
 input features -> ReLU hidden layer(s) -> sigmoid output
@@ -123,12 +122,12 @@ contain a scaler or when you deliberately need to override the saved one.
 
 | File | Responsibility |
 | --- | --- |
-| `mlp.py` | Validates command-line options and starts split, train, or predict mode. |
-| `src/data.py` | Loads labeled CSV files, cleans rows, splits data, scales features, and saves data/scalers. |
-| `src/split.py` | Coordinates the preprocessing → split → scaler-fit → scale → save workflow. |
-| `src/model.py` | Contains activation functions, loss functions, dense layers, backpropagation, evaluation, and model persistence. |
-| `src/train.py` | Builds the network and coordinates training, test evaluation, plotting, and saving. |
-| `src/predict.py` | Loads a model and either evaluates labeled data or predicts feature-only rows. |
+| `mlp.py` | Parses command-line options and starts split, train, or predict mode. |
+| `src/data.py` | Defines `Dataset` plus CSV, scaling, and scaler-saving helpers. |
+| `src/split.py` | Contains the straightforward clean → split → scale → save workflow. |
+| `src/model.py` | Contains the binary MLP math, dense layers, training, evaluation, and model persistence. |
+| `src/train.py` | Builds the network and runs training, test evaluation, plotting, and saving. |
+| `src/predict.py` | Evaluates labeled data or predicts feature-only rows with a saved model. |
 
 ## The important training math
 
@@ -160,20 +159,13 @@ and records loss and accuracy after every epoch.
 ## Use the model in Python
 
 ```python
-from src.model import DenseLayer, MultilayerPerceptron
+from src.train import create_network
 
-model = MultilayerPerceptron(seed=42)
-first_layer = DenseLayer(24, activation="relu")
-first_layer.build(input_features=30, rng=model.rng)
-model.add(first_layer)
-
-output_layer = DenseLayer(1, activation="sigmoid")
-output_layer.build(input_features=24, rng=model.rng)
-model.add(output_layer)
+model = create_network([24, 24], input_features=30, seed=42)
 ```
 
-For normal use, `ModelTrainer.create_network([24, 24], input_features=30)`
-builds this pattern for you.
+For normal use, `create_network([24, 24], input_features=30)` builds this
+pattern for you.
 
 ## CSV formats
 
