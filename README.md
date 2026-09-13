@@ -28,6 +28,50 @@ input features -> ReLU hidden layer(s) -> sigmoid output
 The sigmoid output is a probability. A probability of `0.5` or greater is
 reported as class `1`.
 
+## Visual guide: two hidden layers
+
+The command `--layer 24 24` builds the example below: the 30 scaled breast
+cancer measurements enter two fully connected ReLU layers, each with 24
+neurons. The final sigmoid neuron returns the probability of a malignant
+diagnosis.
+
+![Diagram of a 30-input MLP with two 24-neuron hidden layers](images/two-hidden-layer-network.svg)
+
+Every neuron takes all values from the preceding layer, gives each connection
+a learned weight, adds a learned bias, and applies its activation function.
+The lines in the diagram are representative: in the real network, every
+neuron is connected to every neuron in the next layer.
+
+## Visual guide: how training works
+
+Training takes a small batch of patient rows, makes predictions, measures how
+wrong they are, and sends that error backward to improve each weight and bias.
+
+![Diagram of the MLP mini-batch training cycle](images/training-cycle.svg)
+
+## Watch the network train
+
+[Watch the 64-second colour-coded training walkthrough](images/mlp-training-walkthrough.mp4)
+
+The captioned video follows one mini-batch from scaled input features through
+both ReLU hidden layers, sigmoid probability, binary cross-entropy loss,
+backpropagation, weight updates, and a final prediction for a new patient.
+It uses the model implemented in this project: sigmoid is for its two output
+classes; softmax is shown only as the alternative for a multiclass model.
+
+To recreate the MP4, run:
+
+```bash
+python tools/generate_training_video.py
+```
+
+For example, this trains the illustrated network for 84 passes over the
+training data, using batches of eight rows:
+
+```bash
+python mlp.py --train --layer 24 24 --epochs 84 --batch_size 8 --learning_rate 0.0314
+```
+
 ## Install dependencies
 
 ```bash

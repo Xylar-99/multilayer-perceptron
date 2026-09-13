@@ -218,6 +218,7 @@ class MLPApp:
 
         return parser
 
+
     @classmethod
     def _run_selected_mode(cls, parsed_args):
         """Dispatch parsed options to the workflow selected by its mode flag."""

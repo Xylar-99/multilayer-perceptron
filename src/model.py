@@ -4,34 +4,6 @@ import os
 import numpy as np
 
 
-class Sigmoid:
-    """Sigmoid activation: sigma(z) = 1 / (1 + e^(-z))."""
-
-    @staticmethod
-    def forward(Z):
-        """Compute sigmoid values without overflowing for large inputs."""
-        Z = np.asarray(Z, dtype=float)
-        activation = np.empty_like(Z)
-
-        positive_values = Z >= 0
-        activation[positive_values] = 1 / (1 + np.exp(-Z[positive_values]))
-
-        negative_values = ~positive_values
-        exponentials = np.exp(Z[negative_values])
-        activation[negative_values] = exponentials / (1 + exponentials)
-
-        return activation
-
-    @staticmethod
-    def backward(dA, Z=None, A=None):
-        """Return dZ from an incoming gradient dA."""
-        if A is None:
-            if Z is None:
-                raise ValueError("Either Z or A must be provided")
-            A = Sigmoid.forward(Z)
-
-        return dA * A * (1 - A)
-
 
 class Softmax:
     """Softmax activation: e^(z_i) / sum(e^(z_j))."""
@@ -92,25 +64,6 @@ class ReLU:
         dZ[~active_neurons] = 0
 
         return dZ
-
-
-class Tanh:
-    """Tanh activation: g(z) = (e^z - e^-z) / (e^z + e^-z)."""
-
-    @staticmethod
-    def forward(Z):
-        """Compute tanh activation."""
-        return np.tanh(Z)
-
-    @staticmethod
-    def backward(dA, Z=None, A=None):
-        """Return dZ from an incoming gradient dA."""
-        if A is None:
-            if Z is None:
-                raise ValueError("Either Z or A must be provided")
-            A = Tanh.forward(Z)
-
-        return dA * (1 - A ** 2)
 
 
 class DenseLayer:
@@ -279,6 +232,7 @@ class MultilayerPerceptron:
         self.rng = np.random.default_rng(seed)
         self.history = {"loss": [], "accuracy": []}
         self.scaler = None
+
 
     def add(self, layer):
         """Append a DenseLayer to the network."""

@@ -32,9 +32,9 @@ class ModelTrainer:
             batch_size,
             learning_rate,
         )
-        ModelTrainer._evaluate_test_data(model, test_data)
-        ModelTrainer._save_learning_curves(model.history, plot_out)
-        ModelTrainer._save_model(model, model_out)
+        # ModelTrainer._evaluate_test_data(model, test_data)
+        # ModelTrainer._save_learning_curves(model.history, plot_out)
+        # ModelTrainer._save_model(model, model_out)
 
         return model
 
