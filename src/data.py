@@ -1,4 +1,4 @@
-"""Dataset loading, cleaning, scaling, and scaler persistence."""
+"""Dataset loading, cleaning, and scaling."""
 
 import json
 from pathlib import Path
@@ -7,126 +7,97 @@ import numpy as np
 import pandas as pd
 
 
+def scale_features(features, scaler):
+    """Scale features using Min-Max values."""
+    minimum = np.asarray(scaler["min"])
+    maximum = np.asarray(scaler["max"])
+
+    ranges = maximum - minimum
+    ranges[ranges == 0] = 1
+
+    return (features - minimum) / ranges
+
+
 def save_scaler(scaler, filepath):
-    """Save Min-Max scaling parameters as JSON."""
+    """Save Min-Max values to a JSON file."""
     path = Path(filepath)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as file:
-        json.dump(scaler, file, indent=4)
+
+    with open(path, "w") as f:
+        json.dump(scaler, f)
 
 
 def load_scaler(filepath):
-    """Load Min-Max scaling parameters from JSON."""
-    with Path(filepath).open("r", encoding="utf-8") as file:
-        return json.load(file)
+    """Load Min-Max values from a JSON file."""
+    with open(filepath, "r") as f:
+        scaler = json.load(f)
 
-
-def scale_features(features, scaler):
-    """Return features scaled with a previously fitted Min-Max scaler."""
-    features = np.asarray(features, dtype=float)
-    feature_minimums = np.asarray(scaler["min"], dtype=float)
-    feature_maximums = np.asarray(scaler["max"], dtype=float)
-
-    feature_ranges = feature_maximums - feature_minimums
-    feature_ranges[feature_ranges == 0.0] = 1.0
-    return (features - feature_minimums) / feature_ranges
-
-
-def features_need_scaling(features):
-    """Recognise raw Wisconsin measurements rather than prepared 0-to-1 data."""
-    return np.max(np.abs(features)) > 10
+    return scaler
 
 
 class Dataset:
-    """Store feature values (``X``) and their diagnosis labels (``y``)."""
+    """Store feature values (X) and labels (y)."""
 
     def __init__(self, X=None, y=None):
         self.X = X
         self.y = y
 
     @classmethod
-    def from_csv(cls, filepath, allow_missing_diagnosis=False):
-        """Load a headerless CSV and build a labeled dataset when possible."""
-        raw_data = pd.read_csv(filepath, header=None)
-        return cls.from_frame(raw_data, allow_missing_diagnosis)
+    def from_csv(cls, filepath):
+        """Load a headerless CSV with a fixed format."""
+        data = pd.read_csv(filepath, header=None)
 
-    @classmethod
-    def from_frame(cls, raw_data, allow_missing_diagnosis=False):
-        """Build a dataset from a DataFrame containing an ``M``/``B`` column."""
-        diagnosis_column = None
-        for column in raw_data.columns:
-            values = raw_data[column].dropna().astype(str).str.strip()
-            if not values.empty and set(values).issubset({"M", "B"}):
-                diagnosis_column = column
-                break
+        labels = data.iloc[:, 1].to_numpy()
+        features = data.iloc[:, 2:].to_numpy(dtype=float)
 
-        if diagnosis_column is None:
-            if allow_missing_diagnosis:
-                return None
-            raise ValueError("Diagnosis column not found")
-
-        columns_to_remove = [diagnosis_column]
-        if diagnosis_column != 0 and raw_data.shape[1] > 31:
-            columns_to_remove.append(0)
-
-        features = raw_data.drop(columns=columns_to_remove).to_numpy()
-        labels = raw_data.iloc[:, diagnosis_column].astype("string").str.strip().to_numpy()
         return cls(features, labels)
 
     def clean(self):
-        """Remove rows with missing or non-numeric features and diagnoses."""
-        feature_data = pd.DataFrame(self.X).apply(pd.to_numeric, errors="coerce")
-        label_data = pd.Series(self.y, name="diagnosis")
-        if pd.api.types.is_string_dtype(label_data):
-            label_data = label_data.astype("string").str.strip()
+        """Convert features to numbers and remove incomplete rows."""
+        self.X = pd.DataFrame(self.X).apply(
+            pd.to_numeric, errors="coerce"
+        )
+        self.y = pd.Series(self.y).astype("string").str.strip()
 
-        complete_rows = pd.concat([feature_data, label_data], axis=1).dropna()
-        if complete_rows.empty:
-            raise ValueError("No complete rows remain after cleaning the dataset")
+        valid_rows = self.X.notna().all(axis=1) & self.y.notna()
 
-        self.X = complete_rows.iloc[:, :-1].to_numpy(dtype=float)
-        self.y = complete_rows.iloc[:, -1].to_numpy()
+        self.X = self.X[valid_rows].to_numpy(dtype=float)
+        self.y = self.y[valid_rows].to_numpy()
+
+        if len(self.X) == 0:
+            raise ValueError("No valid rows remain after cleaning")
+
         return self
 
-    def split(self, train_ratio, rng=None):
-        """Randomly split this dataset into train and test datasets."""
-        if not 0 < train_ratio < 1:
-            raise ValueError("train_ratio must be between 0 and 1")
-
-        random_generator = rng if rng is not None else np.random.default_rng()
-        shuffled_indices = random_generator.permutation(len(self.X))
+    def split(self, train_ratio):
+        """Randomly split the dataset into train and test sets."""
+        indices = np.random.permutation(len(self.X))
         train_size = int(train_ratio * len(self.X))
 
-        train_indices = shuffled_indices[:train_size]
-        test_indices = shuffled_indices[train_size:]
-        return (
-            Dataset(self.X[train_indices], self.y[train_indices]),
-            Dataset(self.X[test_indices], self.y[test_indices]),
-        )
+        train_indices = indices[:train_size]
+        test_indices = indices[train_size:]
+
+        train = Dataset(self.X[train_indices], self.y[train_indices])
+        test = Dataset(self.X[test_indices], self.y[test_indices])
+
+        return train, test
 
     def fit_scaler(self):
-        """Fit Min-Max scaling parameters using only this dataset's features."""
-        features = np.asarray(self.X, dtype=float)
-        if len(features) == 0:
-            raise ValueError("Cannot fit a scaler to an empty dataset")
-
+        """Get Min-Max values from the features."""
         return {
-            "type": "minmax",
-            "min": np.min(features, axis=0).tolist(),
-            "max": np.max(features, axis=0).tolist(),
+            "min": np.min(self.X, axis=0).tolist(),
+            "max": np.max(self.X, axis=0).tolist(),
         }
 
-    def scale(self, scaler):
-        """Scale this dataset's features in place with an existing scaler."""
-        if scaler is not None:
-            self.X = scale_features(self.X, scaler)
-        return self
-
     def save_csv(self, filepath):
-        """Save features and labels to a headerless CSV file."""
+        """Save dataset to a headerless CSV file."""
         path = Path(filepath)
         path.parent.mkdir(parents=True, exist_ok=True)
 
         data = pd.DataFrame(self.X)
         data["diagnosis"] = self.y
         data.to_csv(path, index=False, header=False)
+
+    def scale(self, scaler):
+        """Scale features using Min-Max values."""
+        self.X = scale_features(self.X, scaler)

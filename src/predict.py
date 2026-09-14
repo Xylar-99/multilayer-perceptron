@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from .data import Dataset, features_need_scaling, load_scaler, scale_features
+from .data import Dataset, load_scaler, scale_features
 from .model import MultilayerPerceptron
 
 
@@ -17,13 +17,6 @@ def print_evaluation(results, title="Test Set Evaluation"):
     print(results["confusion_matrix"])
 
 
-def scale_if_needed(features, scaler):
-    """Scale raw breast-cancer measurements, but leave prepared CSVs unchanged."""
-    if scaler is not None and features_need_scaling(features):
-        return scale_features(features, scaler)
-    return features
-
-
 def predict_from_file(dataset_path, model_path, scaler_path=None):
     """Evaluate labeled data or predict a feature-only CSV with a saved model."""
     model = MultilayerPerceptron.load(model_path)
@@ -36,7 +29,7 @@ def predict_from_file(dataset_path, model_path, scaler_path=None):
     labeled_data = Dataset.from_frame(raw_data, allow_missing_diagnosis=True)
     if labeled_data is not None:
         labeled_data.clean()
-        labeled_data.X = scale_if_needed(labeled_data.X, model.scaler)
+        labeled_data.X = scale_features(labeled_data.X, model.scaler)
         results = model.evaluate(labeled_data.X, labeled_data.y)
         print_evaluation(results)
         return results
@@ -50,11 +43,16 @@ def predict_from_file(dataset_path, model_path, scaler_path=None):
         )
 
     features = raw_data.apply(pd.to_numeric, errors="raise").to_numpy(dtype=float)
-    features = scale_if_needed(features, model.scaler)
-    probabilities = model.predict_proba(features).reshape(-1)
-    predictions = (probabilities >= 0.5).astype(int)
+    features = scale_features(features, model.scaler)
+    probabilities = model.predict_proba(features)
+    predictions = probabilities.argmax(axis=1)
 
     print("\nPredictions")
-    for row_number, (probability, prediction) in enumerate(zip(probabilities, predictions), start=1):
-        print(f"Row {row_number}: class={prediction}, probability={probability:.4f}")
+    for row_number, (row_probabilities, prediction) in enumerate(zip(probabilities, predictions), start=1):
+        class_name = "malignant" if prediction == 1 else "benign"
+        print(
+            f"Row {row_number}: class={prediction} ({class_name}), "
+            f"P(benign)={row_probabilities[0]:.4f}, "
+            f"P(malignant)={row_probabilities[1]:.4f}"
+        )
     return {"probabilities": probabilities, "predictions": predictions}

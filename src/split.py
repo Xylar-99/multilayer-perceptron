@@ -2,20 +2,23 @@
 
 import numpy as np
 
-from .data import Dataset, save_scaler
+from .data import Dataset , save_scaler , scale_features
 
 
-def split_dataset(dataset_path, train_out, test_out, scaler_out, ratio=0.8, seed=None):
-    """Clean, split, scale, and save the Wisconsin breast-cancer dataset."""
+def split_dataset(dataset_path, train_out, test_out, scaler_out, ratio=0.8):
+    """Clean, split, scale, and save the dataset."""
     dataset = Dataset.from_csv(dataset_path).clean()
-    random_generator = np.random.default_rng(seed)
-    train_data, test_data = dataset.split(ratio, rng=random_generator)
+
+    train_data, test_data = dataset.split(ratio)
 
     scaler = train_data.fit_scaler()
+
     train_data.scale(scaler)
     test_data.scale(scaler)
 
     train_data.save_csv(train_out)
     test_data.save_csv(test_out)
+
     save_scaler(scaler, scaler_out)
+
     return train_data, test_data, scaler

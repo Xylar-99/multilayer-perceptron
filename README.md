@@ -6,8 +6,9 @@ with NumPy. It classifies the Wisconsin Breast Cancer labels:
 - `M` (malignant) becomes `1`.
 - `B` (benign) becomes `0`.
 
-The code is deliberately organized so that each class has one main job and
-its public workflow methods read from the big picture down to the details.
+The code is deliberately organized so its three stateful classes hold real
+data or model state, while the split, train, and predict workflows stay as
+simple module-level functions.
 
 ## Project flow
 
@@ -18,21 +19,26 @@ raw CSV
   -> predict_from_file loads the model and evaluates or predicts
 ```
 
+## Learn each file
+
+For an explanation of every core class and function—its goal, inputs, result,
+and role in the workflow—start with the [file-by-file code guide](docs/README.md).
+
 The network created by `create_network` has this shape:
 
 ```text
-input features -> ReLU hidden layer(s) -> sigmoid output
+input features -> ReLU hidden layer(s) -> 2-unit softmax output
 ```
 
-The sigmoid output is a probability. A probability of `0.5` or greater is
-reported as class `1`.
+Softmax returns two probabilities: `[P(benign), P(malignant)]`. They sum to
+`1`, and the larger one chooses class `0` (benign) or class `1` (malignant).
 
 ## Visual guide: two hidden layers
 
 The command `--layer 24 24` builds the example below: the 30 scaled breast
 cancer measurements enter two fully connected ReLU layers, each with 24
-neurons. The final sigmoid neuron returns the probability of a malignant
-diagnosis.
+neurons. The final two softmax neurons return the probabilities for benign and
+malignant diagnoses.
 
 ![Diagram of a 30-input MLP with two 24-neuron hidden layers](images/two-hidden-layer-network.svg)
 
@@ -43,26 +49,11 @@ neuron is connected to every neuron in the next layer.
 
 ## Visual guide: how training works
 
-Training takes a small batch of patient rows, makes predictions, measures how
-wrong they are, and sends that error backward to improve each weight and bias.
+Training takes a small batch of patient rows, makes softmax predictions,
+measures categorical error, and sends that error backward to improve each
+weight and bias.
 
 ![Diagram of the MLP mini-batch training cycle](images/training-cycle.svg)
-
-## Watch the network train
-
-[Watch the 64-second colour-coded training walkthrough](images/mlp-training-walkthrough.mp4)
-
-The captioned video follows one mini-batch from scaled input features through
-both ReLU hidden layers, sigmoid probability, binary cross-entropy loss,
-backpropagation, weight updates, and a final prediction for a new patient.
-It uses the model implemented in this project: sigmoid is for its two output
-classes; softmax is shown only as the alternative for a multiclass model.
-
-To recreate the MP4, run:
-
-```bash
-python tools/generate_training_video.py
-```
 
 For example, this trains the illustrated network for 84 passes over the
 training data, using batches of eight rows:
@@ -125,8 +116,8 @@ contain a scaler or when you deliberately need to override the saved one.
 | `mlp.py` | Parses command-line options and starts split, train, or predict mode. |
 | `src/data.py` | Defines `Dataset` plus CSV, scaling, and scaler-saving helpers. |
 | `src/split.py` | Contains the straightforward clean → split → scale → save workflow. |
-| `src/model.py` | Contains the binary MLP math, dense layers, training, evaluation, and model persistence. |
-| `src/train.py` | Builds the network and runs training, test evaluation, plotting, and saving. |
+| `src/model.py` | Contains ReLU, softmax, categorical loss, dense layers, training, evaluation, and model persistence. |
+| `src/train.py` | Builds the ReLU-plus-softmax network and runs training, test evaluation, plotting, and saving. |
 | `src/predict.py` | Evaluates labeled data or predicts feature-only rows with a saved model. |
 
 ## The important training math
@@ -138,11 +129,12 @@ Z = inputs @ weights + biases
 A = activation(Z)
 ```
 
-For this binary classifier, the final activation is sigmoid and the loss is
-binary cross-entropy. Their combined output-layer gradient is:
+For this two-class classifier, the final activation is softmax and the loss is
+categorical cross-entropy. The true label is one-hot encoded: benign is
+`[1, 0]` and malignant is `[0, 1]`. Their combined output-layer gradient is:
 
 ```text
-dZ = predicted_probability - true_label
+dZ = predicted_probabilities - one_hot_true_labels
 ```
 
 Each layer then calculates:
@@ -165,7 +157,8 @@ model = create_network([24, 24], input_features=30, seed=42)
 ```
 
 For normal use, `create_network([24, 24], input_features=30)` builds this
-pattern for you.
+pattern for you. `model.predict_proba(X)` then returns one row per sample with
+`[P(benign), P(malignant)]`.
 
 ## CSV formats
 

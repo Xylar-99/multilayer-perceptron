@@ -9,7 +9,7 @@ from src.train import train_model
 
 
 MODE_OPTIONS = {
-    "split": {"--split", "--dataset", "--train_out", "--test_out", "--scaler_out", "--ratio", "--seed"},
+    "split": {"--split", "--dataset", "--train_out", "--test_out", "--scaler_out", "--ratio"},
     "train": {
         "--train",
         "--train_data",
@@ -95,7 +95,7 @@ def run(raw_argv=None):
     """Run the CLI workflow selected by the user."""
     args = parse_arguments(raw_argv)
     if args.split:
-        return split_dataset(args.dataset, args.train_out, args.test_out, args.scaler_out, args.ratio, args.seed)
+        return split_dataset(args.dataset, args.train_out, args.test_out, args.scaler_out, args.ratio)
     if args.train:
         return train_model(
             args.train_data,

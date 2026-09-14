@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" viewBox="0 0 1200 650" role="img" aria-labelledby="title description">
   <title id="title">A multilayer perceptron with two hidden layers</title>
-  <desc id="description">Thirty scaled input features feed two fully connected ReLU hidden layers with 24 neurons each. A single sigmoid output returns the probability that a tumour is malignant.</desc>
+  <desc id="description">Thirty scaled input features feed two fully connected ReLU hidden layers with 24 neurons each. Two softmax output neurons return probabilities for benign and malignant diagnoses.</desc>
   <defs>
     <style>
       .heading { font: 700 28px Arial, sans-serif; fill: #102a43; }
@@ -33,7 +33,7 @@
   <text x="715" y="122" text-anchor="middle" class="label">Hidden layer 2</text>
   <text x="715" y="146" text-anchor="middle" class="detail">24 neurons · ReLU</text>
   <text x="1015" y="122" text-anchor="middle" class="label">Output layer</text>
-  <text x="1015" y="146" text-anchor="middle" class="detail">1 neuron · sigmoid</text>
+  <text x="1015" y="146" text-anchor="middle" class="detail">2 neurons · softmax</text>
 
   <!-- Representative full connections: input to hidden 1 -->
   <g class="connection">
@@ -49,9 +49,12 @@
     <path d="M449 352 L691 212"/><path d="M449 352 L691 282"/><path d="M449 352 L691 352"/><path d="M449 352 L691 422"/>
     <path d="M449 422 L691 212"/><path d="M449 422 L691 282"/><path d="M449 422 L691 352"/><path d="M449 422 L691 422"/>
   </g>
-  <!-- Hidden 2 to output connections -->
+  <!-- Hidden 2 to both softmax outputs -->
   <g class="connection">
-    <path d="M739 212 L986 317"/><path d="M739 282 L986 317"/><path d="M739 352 L986 317"/><path d="M739 422 L986 317"/>
+    <path d="M739 212 L982 282"/><path d="M739 212 L982 392"/>
+    <path d="M739 282 L982 282"/><path d="M739 282 L982 392"/>
+    <path d="M739 352 L982 282"/><path d="M739 352 L982 392"/>
+    <path d="M739 422 L982 282"/><path d="M739 422 L982 392"/>
   </g>
 
   <!-- Input nodes -->
@@ -86,12 +89,15 @@
   <text x="715" y="505" text-anchor="middle" class="small">Combines the first layer's</text>
   <text x="715" y="525" text-anchor="middle" class="small">patterns into richer patterns.</text>
 
-  <!-- Output -->
-  <circle cx="1015" cy="317" r="48" class="node-output"/>
-  <text x="1015" y="311" text-anchor="middle" class="label">p</text>
-  <text x="1015" y="333" text-anchor="middle" class="detail">0 to 1</text>
-  <text x="1015" y="397" text-anchor="middle" class="small">P(malignant)</text>
-  <text x="1015" y="417" text-anchor="middle" class="small">≥ 0.5 → class 1</text>
+  <!-- Softmax output -->
+  <circle cx="1015" cy="282" r="39" class="node-output"/>
+  <circle cx="1015" cy="392" r="39" class="node-output"/>
+  <text x="1015" y="277" text-anchor="middle" class="label">p(B)</text>
+  <text x="1015" y="298" text-anchor="middle" class="detail">benign</text>
+  <text x="1015" y="387" text-anchor="middle" class="label">p(M)</text>
+  <text x="1015" y="408" text-anchor="middle" class="detail">malignant</text>
+  <text x="1015" y="463" text-anchor="middle" class="small">softmax probabilities sum to 1</text>
+  <text x="1015" y="483" text-anchor="middle" class="small">largest probability → predicted class</text>
 
   <!-- How a neuron works -->
   <rect x="75" y="560" width="1050" height="62" rx="10" class="panel"/>
@@ -105,5 +111,5 @@
   <text x="735" y="587" text-anchor="middle" class="formula">A = activation(Z)</text>
   <text x="735" y="608" text-anchor="middle" class="small">ReLU in hidden layers</text>
   <text x="1030" y="587" text-anchor="middle" class="formula">next layer</text>
-  <text x="1030" y="608" text-anchor="middle" class="small">sigmoid at the output</text>
+  <text x="1030" y="608" text-anchor="middle" class="small">softmax at the output</text>
 </svg>
