@@ -7,19 +7,7 @@ from .model import DenseLayer, MultilayerPerceptron
 from .predict import print_evaluation
 
 
-def create_network(hidden_layers, input_features, seed=42):
-    """Build ``input -> ReLU hidden layers -> two-unit softmax output``."""
-    model = MultilayerPerceptron(seed=seed)
-    layer_sizes = [*hidden_layers, 2]
-    current_input_features = input_features
 
-    for layer_index, units in enumerate(layer_sizes):
-        activation = "softmax" if layer_index == len(layer_sizes) - 1 else "relu"
-        layer = DenseLayer(units, activation)
-        layer.build(current_input_features, rng=model.rng)
-        model.add(layer)
-        current_input_features = units
-    return model
 
 
 def plot_learning_curves(history, save_path):
@@ -48,13 +36,19 @@ def plot_learning_curves(history, save_path):
 def train_model(train_data_path,test_data_path,hidden_layers,epochs,batch_size,learning_rate,model_out,plot_out,seed=42,scaler_path="scaler.pkl"):
     """Run the full training workflow and return the trained model."""
     training_data = Dataset.from_csv(train_data_path).clean()
-    model = create_network(hidden_layers, training_data.X.shape[1], seed)
+    input_features = training_data.X.shape[1]
 
-    model.scaler = load_scaler(scaler_path)
+    
+    model = MultilayerPerceptron(input_features, hidden_layers, seed)
+
+
+    # model.scaler = load_scaler(scaler_path)
 
     model.fit(training_data.X, training_data.y, epochs, batch_size, learning_rate)
-    print_evaluation(model.evaluate(test_data.X, test_data.y))
 
-    plot_learning_curves(model.history, plot_out)
-    model.save(model_out)
+    # print_evaluation(model.evaluate(test_data.X, test_data.y))
+
+    # plot_learning_curves(model.history, plot_out)
+    # model.save(model_out)
+
     return model

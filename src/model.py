@@ -1,33 +1,23 @@
-"""A small binary multilayer perceptron built with NumPy."""
-
 import json
 from pathlib import Path
-
 import numpy as np
+import sys
+
+
+
+
 
 
 def binary_labels(labels):
-    """Convert B/M labels, or existing 0/1 labels, to integers."""
+    """Convert B/M labels to one-hot encoded labels."""
     labels = np.asarray(labels).reshape(-1)
 
-    if labels.dtype.kind in {"U", "S", "O"}:
-        labels = np.char.strip(labels.astype(str))
-        if set(np.unique(labels)).issubset({"B", "M"}):
-            return (labels == "M").astype(int)
+    y = np.zeros((len(labels), 2), dtype=int)
 
-    numeric_labels = labels.astype(float)
-    if not np.all(np.isin(numeric_labels, (0.0, 1.0))):
-        raise ValueError("Labels must be B/M or binary values 0/1")
-    return numeric_labels.astype(int)
+    y[labels == "B", 0] = 1
+    y[labels == "M", 1] = 1
 
-
-def binary_cross_entropy(targets, predictions):
-    """Return the average binary cross-entropy loss."""
-    predictions = np.clip(predictions, 1e-12, 1.0 - 1e-12)
-    return -np.mean(
-        targets * np.log(predictions)
-        + (1.0 - targets) * np.log(1.0 - predictions)
-    )
+    return y
 
 
 def classification_metrics(targets, predictions):
@@ -49,35 +39,70 @@ def classification_metrics(targets, predictions):
     }
 
 
+
+
+class BCE:
+    """Return the average binary cross-entropy loss."""
+    @staticmethod
+    def compute(targets, predictions):
+        predictions = np.clip(predictions, 1e-12, 1.0 - 1e-12)
+        return -np.mean(
+            targets * np.log(predictions) + (1 - targets) * np.log(1 - predictions)
+        )
+
+    @staticmethod
+    def compute_gradient(targets, predictions):
+        predictions = np.clip(predictions, 1e-12, 1.0 - 1e-12)
+        return -(targets / predictions) + (1 - targets) / (1 - predictions)
+
+
+
+class CCE:
+    """Return the average categorical cross-entropy loss."""
+    @staticmethod
+    def compute_gradient(labels, predictions):
+        predictions = np.clip(predictions, 1e-12, 1.0 - 1e-12)
+        return -labels / predictions
+    
+
+
+
 class ReLU:
     """The ReLU activation: ``max(0, x)``."""
 
-    def __init__(self):
-        self.inputs = None
     @staticmethod
-    def forward(self, values):
-        self.inputs = np.asarray(values, dtype=float)
-        return np.maximum(0.0, self.inputs)
+    def forward(self, inputs):
+        return np.maximum(0.0, inputs)
 
     @staticmethod
     def backward(self, gradient):
-        return gradient * (self.inputs > 0.0)
+        return gradient
 
 
-class Sigmoid:
-    """The sigmoid activation used by the final binary output."""
-
-    def __init__(self):
-        self.outputs = None
+class Softmax:
+    """The softmax activation: exp(x) / sum(exp(x))."""
 
     @staticmethod
-    def forward(self, values):
-        values = np.asarray(values, dtype=float)
-        self.outputs = 1.0 / (1.0 + np.exp(-np.clip(values, -500.0, 500.0)))
-        return self.outputs
+    def forward(inputs):
+        inputs = inputs - np.max(inputs, axis=1, keepdims=True)
+        exp_values = np.exp(inputs)
+
+        return exp_values / np.sum(exp_values,axis=1,keepdims=True)
+
     @staticmethod
-    def backward(self, gradient):
-        return gradient * self.outputs * (1.0 - self.outputs)
+    def backward(gradient, outputs):
+        """Compute the gradient of the softmax function."""
+
+        dZ = np.zeros_like(outputs)
+
+        for i in range(outputs.shape[0]):
+            A = outputs[i]
+
+            jacobian = np.diag(A) - np.outer(A, A)
+
+            dZ[i] = jacobian @ gradient[i]
+
+        return dZ
 
 
 class DenseLayer:
@@ -95,52 +120,63 @@ class DenseLayer:
         self.db = None
         self.dA = None
         self.dZ = None
+        self.Z = None
+        self.A = None
 
     def forward(self, inputs):
         self.inputs = np.asarray(inputs, dtype=float)
+        self.Z = self.inputs @ self.weights + self.biases
+
         if self.activation == "relu":
-            self.dA = ReLU.forward(self, self.inputs @ self.weights + self.biases)
+            self.A = ReLU.forward(self, self.Z)
         elif self.activation == "softmax":
-            self.dA = Softmax.forward(self, self.inputs @ self.weights + self.biases)
+            self.A = Softmax.forward(self, self.Z)
         else:
             raise ValueError(f"Unsupported activation function: {self.activation}")
-        return self.dA
 
-    def backward(self, dZ):
-        """Calculate parameter gradients and return the previous gradient."""
-        self.dZ = np.asarray(dZ, dtype=float)
-        self.dW = self.inputs.T @ self.dZ / len(self.inputs)
-        self.db = np.sum(self.dZ, axis=0, keepdims=True) / len(self.inputs)
-        return self.dZ @ self.weights.T
+        return self.A
+
+    def backward(self, dA):
+        self.dA = np.asarray(dA, dtype=float)
+        if self.activation == "relu":
+            self.dZ = ReLU.backward(self, self.dA)
+        elif self.activation == "softmax":
+            self.dZ = Softmax.backward(self, self.dA)
+        else:
+            raise ValueError(f"Unsupported activation function: {self.activation}")
+        
+        return self.dZ
 
     def update(self, learning_rate):
         self.weights -= learning_rate * self.dW
         self.biases -= learning_rate * self.db
 
 
+
 class MultilayerPerceptron:
     """A binary MLP made from Dense, ReLU, and Sigmoid layers."""
 
-    def __init__(self, input_features, hidden_layers=(6, 8), seed=42):
+    def __init__(self, input_features, hidden_layers=(24, 24), seed=42):
         self.input_features = input_features
-        self.hidden_layers = list(hidden_layers)
+        self.hidden_layers = list(hidden_layers) + [2]
         self.seed = seed
+
         self.rng = np.random.default_rng(seed)
+
         self.history = {"loss": [], "accuracy": []}
         self.scaler = None
+
         self.layers = []
 
-        previous_features = input_features
-        for units in hidden_layers:
-            self.layers.append(DenseLayer(previous_features, units, self.rng))
-            self.layers.append(ReLU())
-            previous_features = units
-
-        self.layers.append(DenseLayer(previous_features, 1, self.rng))
-        self.layers.append(Sigmoid())
+        for layer_index, units in enumerate(self.hidden_layers):
+            activation = "softmax" if layer_index == len(self.hidden_layers) - 1 else "relu"
+            layer = DenseLayer(input_features, units, activation)
+            self.layers.append(layer)
+            input_features = units
 
     def forward(self, X):
         """Return the final output of the network."""
+
         inputs = np.asarray(X, dtype=float)
         for layer in self.layers:
             inputs = layer.forward(inputs)
@@ -155,14 +191,17 @@ class MultilayerPerceptron:
 
     def update(self, learning_rate):
         """Update the weights and biases of each layer."""
+        
         for layer in self.layers:
-            if isinstance(layer, DenseLayer):
-                layer.update(learning_rate)
-            
+            layer.dW = layer.inputs.T @ layer.dZ / layer.inputs.shape[0]
+            layer.db = np.mean(layer.dZ, axis=0, keepdims=True)
+            layer.update(learning_rate)
+
     def fit(self, X, y, epochs, batch_size, learning_rate):
         """Train with mini-batch gradient descent."""
         X = np.asarray(X, dtype=float)
         y = binary_labels(y)
+
 
         for epoch in range(epochs):
             indices = self.rng.permutation(len(X))
@@ -175,15 +214,16 @@ class MultilayerPerceptron:
                 y_batch = y_shuffled[start:end]
 
                 predictions = self.forward(X_batch)
-                loss_gradient = predictions - y_batch.reshape(-1, 1)
+                loss_gradient = CCE.compute_gradient(y_batch, predictions)
+
                 self.backward(loss_gradient)
                 self.update(learning_rate)
+                sys.exit(1)
 
-            epoch_loss = binary_cross_entropy(y, self.predict_proba(X))
-            epoch_accuracy = np.mean(self.predict(X) == y)
-            self.history["loss"].append(epoch_loss)
-            self.history["accuracy"].append(epoch_accuracy)
-
+            # epoch_loss = binary_cross_entropy(y, self.predict_proba(X))
+            # epoch_accuracy = np.mean(self.predict(X) == y)
+            # self.history["loss"].append(epoch_loss)
+            # self.history["accuracy"].append(epoch_accuracy)
 
     def predict_proba(self, X):
         """Return one malignant probability for each input row."""

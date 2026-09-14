@@ -44,11 +44,10 @@ class Dataset:
 
     @classmethod
     def from_csv(cls, filepath):
-        """Load a headerless CSV with a fixed format."""
         data = pd.read_csv(filepath, header=None)
-
+        
         labels = data.iloc[:, 1].to_numpy()
-        features = data.iloc[:, 2:].to_numpy(dtype=float)
+        features = data.iloc[:, 2:].to_numpy()
 
         return cls(features, labels)
 
@@ -95,7 +94,8 @@ class Dataset:
         path.parent.mkdir(parents=True, exist_ok=True)
 
         data = pd.DataFrame(self.X)
-        data["diagnosis"] = self.y
+        data.insert(0, "id", range(1, len(data) + 1))
+        data.insert(1, "diagnosis", self.y)
         data.to_csv(path, index=False, header=False)
 
     def scale(self, scaler):
