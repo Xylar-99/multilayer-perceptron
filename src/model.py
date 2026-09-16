@@ -60,23 +60,21 @@ class BCE:
 class CCE:
     """Return the average categorical cross-entropy loss."""
     @staticmethod
-    def compute_gradient(labels, predictions):
-        predictions = np.clip(predictions, 1e-12, 1.0 - 1e-12)
-        return -labels / predictions
+    def compute_gradient(targets, predictions):
+        predictions = np.clip(predictions, 1e-12, 1.0)
+        return -(targets / predictions)
+
     
 
-
-
 class ReLU:
-    """The ReLU activation: ``max(0, x)``."""
 
     @staticmethod
-    def forward(self, inputs):
+    def forward(inputs):
         return np.maximum(0.0, inputs)
 
     @staticmethod
-    def backward(self, gradient):
-        return gradient
+    def backward(dA, Z):
+        return dA * (Z > 0)
 
 
 class Softmax:
@@ -89,63 +87,46 @@ class Softmax:
 
         return exp_values / np.sum(exp_values,axis=1,keepdims=True)
 
-    @staticmethod
-    def backward(gradient, outputs):
-        """Compute the gradient of the softmax function."""
-
-        dZ = np.zeros_like(outputs)
-
-        for i in range(outputs.shape[0]):
-            A = outputs[i]
-
-            jacobian = np.diag(A) - np.outer(A, A)
-
-            dZ[i] = jacobian @ gradient[i]
-
-        return dZ
-
 
 class DenseLayer:
-    """A fully connected linear layer: ``Z = inputs @ weights + biases``."""
 
-    def __init__(self, input_features, units , activation="relu"):
-        self.input_features = input_features
-        self.units = units
-
+    def __init__(self, input_features, units, activation="relu", seed=42):
         self.activation = activation
-        self.weights = np.random.default_rng().normal(0.0, np.sqrt(2.0 / input_features), (input_features, units))
+        self.weights = np.random.default_rng(seed).normal(0, 1 / np.sqrt(input_features),(input_features, units))
         self.biases = np.zeros((1, units))
+
         self.inputs = None
-        self.dW = None
-        self.db = None
-        self.dA = None
-        self.dZ = None
         self.Z = None
         self.A = None
+        self.dZ = None
+        self.dW = None
+        self.db = None
 
     def forward(self, inputs):
         self.inputs = np.asarray(inputs, dtype=float)
         self.Z = self.inputs @ self.weights + self.biases
 
         if self.activation == "relu":
-            self.A = ReLU.forward(self, self.Z)
+            self.A = ReLU.forward(self.Z)
         elif self.activation == "softmax":
-            self.A = Softmax.forward(self, self.Z)
+            self.A = Softmax.forward(self.Z)
         else:
-            raise ValueError(f"Unsupported activation function: {self.activation}")
+            raise ValueError("Unsupported activation")
 
         return self.A
 
     def backward(self, dA):
-        self.dA = np.asarray(dA, dtype=float)
         if self.activation == "relu":
-            self.dZ = ReLU.backward(self, self.dA)
-        elif self.activation == "softmax":
-            self.dZ = Softmax.backward(self, self.dA)
+            self.dZ = ReLU.backward(dA, self.Z)
         else:
-            raise ValueError(f"Unsupported activation function: {self.activation}")
-        
-        return self.dZ
+            self.dZ = dA
+
+        batch_size = self.inputs.shape[0]
+
+        self.dW = (self.inputs.T @ self.dZ) / batch_size
+        self.db = np.sum(self.dZ, axis=0, keepdims=True) / batch_size
+
+        return self.dZ @ self.weights.T
 
     def update(self, learning_rate):
         self.weights -= learning_rate * self.dW
@@ -153,8 +134,9 @@ class DenseLayer:
 
 
 
+
 class MultilayerPerceptron:
-    """A binary MLP made from Dense, ReLU, and Sigmoid layers."""
+    """A binary MLP made from Dense, ReLU, and Softmax layers."""
 
     def __init__(self, input_features, hidden_layers=(24, 24), seed=42):
         self.input_features = input_features
@@ -165,43 +147,37 @@ class MultilayerPerceptron:
 
         self.history = {"loss": [], "accuracy": []}
         self.scaler = None
-
         self.layers = []
 
         for layer_index, units in enumerate(self.hidden_layers):
-            activation = "softmax" if layer_index == len(self.hidden_layers) - 1 else "relu"
+            activation = ("softmax" if layer_index == len(self.hidden_layers) - 1 else "relu")
             layer = DenseLayer(input_features, units, activation)
             self.layers.append(layer)
             input_features = units
 
-    def forward(self, X):
-        """Return the final output of the network."""
 
+    def forward(self, X):
         inputs = np.asarray(X, dtype=float)
+
         for layer in self.layers:
             inputs = layer.forward(inputs)
+
         return inputs
 
-    def backward(self, dA):
-        """Backpropagate the loss gradient through the network."""
-        gradient = np.asarray(dA, dtype=float)
+    def backward(self, predictions, targets):
+        dZ = predictions - targets
+
         for layer in reversed(self.layers):
-            gradient = layer.backward(gradient)
-        return gradient
+            dZ = layer.backward(dZ)
 
     def update(self, learning_rate):
-        """Update the weights and biases of each layer."""
-        
         for layer in self.layers:
-            layer.dW = layer.inputs.T @ layer.dZ / layer.inputs.shape[0]
-            layer.db = np.mean(layer.dZ, axis=0, keepdims=True)
             layer.update(learning_rate)
 
+
     def fit(self, X, y, epochs, batch_size, learning_rate):
-        """Train with mini-batch gradient descent."""
         X = np.asarray(X, dtype=float)
         y = binary_labels(y)
-
 
         for epoch in range(epochs):
             indices = self.rng.permutation(len(X))
@@ -210,20 +186,16 @@ class MultilayerPerceptron:
 
             for start in range(0, len(X), batch_size):
                 end = start + batch_size
+
                 X_batch = X_shuffled[start:end]
                 y_batch = y_shuffled[start:end]
 
                 predictions = self.forward(X_batch)
-                loss_gradient = CCE.compute_gradient(y_batch, predictions)
 
-                self.backward(loss_gradient)
+                self.backward(predictions, y_batch)
                 self.update(learning_rate)
-                sys.exit(1)
 
-            # epoch_loss = binary_cross_entropy(y, self.predict_proba(X))
-            # epoch_accuracy = np.mean(self.predict(X) == y)
-            # self.history["loss"].append(epoch_loss)
-            # self.history["accuracy"].append(epoch_accuracy)
+                
 
     def predict_proba(self, X):
         """Return one malignant probability for each input row."""
@@ -234,18 +206,19 @@ class MultilayerPerceptron:
         return (self.predict_proba(X) >= 0.5).astype(int)
 
     def evaluate(self, X, y):
-        """Return loss, accuracy, precision, recall, and a confusion matrix."""
-        targets = binary_labels(y)
-        probabilities = self.predict_proba(X)
-        if len(probabilities) != len(targets):
-            raise ValueError("X and y must contain the same number of examples")
+        X = np.asarray(X, dtype=float)
+        y = binary_labels(y)
 
-        predictions = (probabilities >= 0.5).astype(int)
-        metrics = classification_metrics(targets, predictions)
-        return {
-            "loss": float(binary_cross_entropy(targets, probabilities)),
-            **metrics,
-        }
+        predictions = self.forward(X)
+
+        predicted_classes = np.argmax(predictions, axis=1)
+        true_classes = np.argmax(y, axis=1)
+
+        accuracy = np.mean(predicted_classes == true_classes)
+
+        print(f"Test accuracy: {accuracy * 100:.2f}%")
+
+        return accuracy
 
     def save(self, filepath):
         """Save the network architecture and learned parameters as JSON."""
