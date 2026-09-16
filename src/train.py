@@ -38,19 +38,15 @@ def train_model(train_data_path,test_data_path,hidden_layers,epochs,batch_size,l
     training_data = Dataset.from_csv(train_data_path).clean()
     input_features = training_data.X.shape[1]
 
-    test_data = Dataset.from_csv(test_data_path).clean()
-
-    
     model = MultilayerPerceptron(input_features, hidden_layers, seed)
 
-
-    # model.scaler = load_scaler(scaler_path)
+    test_data = Dataset.from_csv(test_data_path).clean()
 
     model.fit(training_data.X, training_data.y, epochs, batch_size, learning_rate)
 
     print(model.evaluate(test_data.X, test_data.y))
 
-    # plot_learning_curves(model.history, plot_out)
+    plot_learning_curves(model.history, plot_out)
     model.save(model_out)
 
     return model
