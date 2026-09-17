@@ -3,7 +3,7 @@
 import argparse
 import sys
 
-from src.predict import predict_from_file
+from src.predict import Predictor
 from src.split import split_dataset
 from src.train import train_model
 
@@ -23,7 +23,7 @@ MODE_OPTIONS = {
         "--seed",
         "--scaler",
     },
-    "predict": {"--predict", "--dataset", "--model", "--scaler"},
+    "predict": {"--predict", "--input_csv", "--output_csv", "--model", "--scaler"},
 }
 
 
@@ -53,17 +53,19 @@ def build_parser():
     train_group.add_argument("--learning_rate", type=float, default=0.0314, help="Learning rate (default: 0.0314).")
     train_group.add_argument("--model_out", default="output/saved_model.json", help="Path for the trained model.")
     train_group.add_argument("--plot_out", default="output/learning_curves.png", help="Path for the learning-curve plot.")
+    train_group.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility (default: 42).")
+
 
     predict_group = parser.add_argument_group("Options for --predict")
     predict_group.add_argument("--model", default="output/saved_model.json", help="Path to the saved model.")
+    predict_group.add_argument("--input_csv", default="data/example.csv", help="CSV for --predict (features or labeled).")
+    predict_group.add_argument("--output_csv", default="data/predictions.csv", help="Destination path for predictions CSV.")
 
-    shared_group = parser.add_argument_group("Options shared by modes")
-    shared_group.add_argument("--seed", type=int, default=42, help="Random seed for --split and --train (default: 42).")
-    shared_group.add_argument(
-        "--scaler",
-        default=None,
-        help="Optional scaler JSON for --train or --predict; it overrides a saved scaler.",
-    )
+
+    shared_group = parser.add_argument_group("Shared options")
+    shared_group.add_argument("--scaler", default="output/scaler.json", help="Path to the scaler JSON (used for both --train and --predict).")
+
+
     return parser
 
 
@@ -109,7 +111,7 @@ def run(raw_argv=None):
             args.seed,
             args.scaler,
         )
-    return predict_from_file(args.dataset, args.model, args.scaler)
+    return Predictor(args.model, args.scaler).predict(args.input_csv, args.output_csv)
 
 
 def main():

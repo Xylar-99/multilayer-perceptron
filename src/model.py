@@ -6,8 +6,6 @@ import sys
 
 
 
-
-
 def binary_labels(labels):
     """Convert B/M labels to one-hot encoded labels."""
     labels = np.asarray(labels).reshape(-1)
@@ -18,26 +16,6 @@ def binary_labels(labels):
     y[labels == "M", 1] = 1
 
     return y
-
-
-def classification_metrics(targets, predictions):
-    """Return simple binary classification metrics."""
-    true_positive = np.sum((targets == 1) & (predictions == 1))
-    true_negative = np.sum((targets == 0) & (predictions == 0))
-    false_positive = np.sum((targets == 0) & (predictions == 1))
-    false_negative = np.sum((targets == 1) & (predictions == 0))
-
-    precision_total = true_positive + false_positive
-    recall_total = true_positive + false_negative
-    return {
-        "accuracy": float(np.mean(targets == predictions)),
-        "precision": true_positive / precision_total if precision_total else 0.0,
-        "recall": true_positive / recall_total if recall_total else 0.0,
-        "confusion_matrix": np.array(
-            [[true_negative, false_positive], [false_negative, true_positive]]
-        ),
-    }
-
 
 
 
@@ -155,7 +133,6 @@ class MultilayerPerceptron:
             self.layers.append(layer)
             input_features = units
 
-
     def forward(self, X):
         inputs = np.asarray(X, dtype=float)
 
@@ -173,7 +150,6 @@ class MultilayerPerceptron:
     def update(self, learning_rate):
         for layer in self.layers:
             layer.update(learning_rate)
-
 
     def fit(self, X, y, epochs, batch_size, learning_rate):
         X = np.asarray(X, dtype=float)
@@ -199,26 +175,13 @@ class MultilayerPerceptron:
 
     def predict_proba(self, X):
         """Return one malignant probability for each input row."""
-        return self.forward(X).reshape(-1)
+        return self.forward(X)[:, 1]
 
     def predict(self, X):
         """Return 0 for benign and 1 for malignant."""
-        return (self.predict_proba(X) >= 0.5).astype(int)
+        return self
 
-    def evaluate(self, X, y):
-        X = np.asarray(X, dtype=float)
-        y = binary_labels(y)
 
-        predictions = self.forward(X)
-
-        predicted_classes = np.argmax(predictions, axis=1)
-        true_classes = np.argmax(y, axis=1)
-
-        accuracy = np.mean(predicted_classes == true_classes)
-
-        print(f"Test accuracy: {accuracy * 100:.2f}%")
-
-        return accuracy
 
     def save(self, filepath):
         """Save the network architecture and learned parameters as JSON."""

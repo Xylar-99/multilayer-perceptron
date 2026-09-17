@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .data import Dataset, load_scaler
 from .model import DenseLayer, MultilayerPerceptron
-from .predict import print_evaluation
+# from .predict import print_evaluation
 
 
 
@@ -44,9 +44,9 @@ def train_model(train_data_path,test_data_path,hidden_layers,epochs,batch_size,l
 
     model.fit(training_data.X, training_data.y, epochs, batch_size, learning_rate)
 
-    print(model.evaluate(test_data.X, test_data.y))
 
-    plot_learning_curves(model.history, plot_out)
+
+    # plot_learning_curves(model.history, plot_out)
     model.save(model_out)
 
     return model
