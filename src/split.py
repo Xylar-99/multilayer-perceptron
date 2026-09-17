@@ -21,4 +21,7 @@ def split_dataset(dataset_path, train_out, test_out, scaler_out, ratio=0.8):
 
     save_scaler(scaler, scaler_out)
 
+    print(f"x_train shape: {train_data.X.shape}")
+    print(f"x_valid shape: {test_data.X.shape}")
+
     return train_data, test_data, scaler
