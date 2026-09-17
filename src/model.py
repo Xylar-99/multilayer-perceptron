@@ -37,11 +37,19 @@ class BCE:
 
 class CCE:
     """Return the average categorical cross-entropy loss."""
+
+    @staticmethod
+    def compute(targets, predictions):
+        predictions = np.clip(predictions, 1e-12, 1.0)
+
+        return -np.mean(
+            np.sum(targets * np.log(predictions), axis=1)
+        )
+
     @staticmethod
     def compute_gradient(targets, predictions):
         predictions = np.clip(predictions, 1e-12, 1.0)
         return -(targets / predictions)
-
     
 
 class ReLU:
@@ -116,16 +124,20 @@ class DenseLayer:
 class MultilayerPerceptron:
     """A binary MLP made from Dense, ReLU, and Softmax layers."""
 
-    def __init__(self, input_features, hidden_layers=(24, 24), seed=42):
+    def __init__(self, input_features, hidden_layers=(24, 24), epochs=100, batch_size=32, learning_rate=0.01, seed=42):
         self.input_features = input_features
         self.hidden_layers = list(hidden_layers) + [2]
         self.seed = seed
 
         self.rng = np.random.default_rng(seed)
 
-        self.history = {"loss": [], "accuracy": []}
+        self.history = {"loss": [], "accuracy": [] , "val_loss": [], "val_accuracy": []}
         self.scaler = None
         self.layers = []
+
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
+        self.epochs = epochs
 
         for layer_index, units in enumerate(self.hidden_layers):
             activation = ("softmax" if layer_index == len(self.hidden_layers) - 1 else "relu")
@@ -151,16 +163,46 @@ class MultilayerPerceptron:
         for layer in self.layers:
             layer.update(learning_rate)
 
-    def fit(self, X, y, epochs, batch_size, learning_rate):
-        X = np.asarray(X, dtype=float)
-        y = binary_labels(y)
+    # def fit(self, X, y, epochs, batch_size, learning_rate):
+    #     X = np.asarray(X, dtype=float)
+    #     y = binary_labels(y)
+
+    #     for epoch in range(epochs):
+    #         indices = self.rng.permutation(len(X))
+    #         X_shuffled = X[indices]
+    #         y_shuffled = y[indices]
+
+    #         for start in range(0, len(X), batch_size):
+    #             end = start + batch_size
+
+    #             X_batch = X_shuffled[start:end]
+    #             y_batch = y_shuffled[start:end]
+
+    #             predictions = self.forward(X_batch)
+
+    #             self.backward(predictions, y_batch)
+    #             self.update(learning_rate)
+
+
+    def fit(self, X_train, y_train, X_valid, y_valid):
+
+        X_train = np.asarray(X_train, dtype=float)
+        X_valid = np.asarray(X_valid, dtype=float)
+
+        y_train = binary_labels(y_train)
+        y_valid = binary_labels(y_valid)
+
+        batch_size = self.batch_size
+        learning_rate = self.learning_rate
+        epochs = self.epochs
 
         for epoch in range(epochs):
-            indices = self.rng.permutation(len(X))
-            X_shuffled = X[indices]
-            y_shuffled = y[indices]
+            indices = self.rng.permutation(len(X_train))
 
-            for start in range(0, len(X), batch_size):
+            X_shuffled = X_train[indices]
+            y_shuffled = y_train[indices]
+
+            for start in range(0, len(X_train), batch_size):
                 end = start + batch_size
 
                 X_batch = X_shuffled[start:end]
@@ -171,15 +213,41 @@ class MultilayerPerceptron:
                 self.backward(predictions, y_batch)
                 self.update(learning_rate)
 
-                
+
+            # Compute and store training and validation loss and accuracy
+            train_predictions = self.forward(X_train)
+            valid_predictions = self.forward(X_valid)
+
+            train_loss = CCE.compute(y_train,train_predictions)
+            valid_loss = CCE.compute(y_valid, valid_predictions)
+
+            self.history["loss"].append(train_loss)
+            self.history["val_loss"].append(valid_loss)
+            self.history["accuracy"].append(np.mean(np.argmax(train_predictions, axis=1) == np.argmax(y_train, axis=1)))
+            self.history["val_accuracy"].append(np.mean(np.argmax(valid_predictions, axis=1) == np.argmax(y_valid, axis=1)))
+
+            print(
+                f"epoch {epoch + 1:02d}/{epochs} "
+                f"- loss: {train_loss:.4f} "
+                f"- val_loss: {valid_loss:.4f}"
+            )
 
     def predict_proba(self, X):
-        """Return one malignant probability for each input row."""
-        return self.forward(X)[:, 1]
+        """Return malignant probability for each sample."""
+        X = np.asarray(X, dtype=float)
 
+        predictions = self.forward(X)
+
+        return predictions[:, 1]
+    
     def predict(self, X):
-        """Return 0 for benign and 1 for malignant."""
-        return self
+        """Return B for benign and M for malignant."""
+        X = np.asarray(X, dtype=float)
+
+        predictions = self.forward(X)
+        classes = np.argmax(predictions, axis=1)
+
+        return np.where(classes == 0, "B", "M")
 
 
 
@@ -201,6 +269,7 @@ class MultilayerPerceptron:
         }
         with path.open("w", encoding="utf-8") as file:
             json.dump(model_data, file, indent=2)
+        print(f"Model saved to {filepath}")
 
     @classmethod
     def load(cls, filepath):

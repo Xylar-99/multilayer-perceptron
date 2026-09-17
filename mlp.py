@@ -111,7 +111,7 @@ def run(raw_argv=None):
             args.seed,
             args.scaler,
         )
-    return Predictor(args.model, args.scaler).predict(args.input_csv, args.output_csv)
+    return Predictor(args.model, args.scaler , args.input_csv , args.output_csv).predict()
 
 
 def main():
