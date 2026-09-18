@@ -163,27 +163,6 @@ class MultilayerPerceptron:
         for layer in self.layers:
             layer.update(learning_rate)
 
-    # def fit(self, X, y, epochs, batch_size, learning_rate):
-    #     X = np.asarray(X, dtype=float)
-    #     y = binary_labels(y)
-
-    #     for epoch in range(epochs):
-    #         indices = self.rng.permutation(len(X))
-    #         X_shuffled = X[indices]
-    #         y_shuffled = y[indices]
-
-    #         for start in range(0, len(X), batch_size):
-    #             end = start + batch_size
-
-    #             X_batch = X_shuffled[start:end]
-    #             y_batch = y_shuffled[start:end]
-
-    #             predictions = self.forward(X_batch)
-
-    #             self.backward(predictions, y_batch)
-    #             self.update(learning_rate)
-
-
     def fit(self, X_train, y_train, X_valid, y_valid):
 
         X_train = np.asarray(X_train, dtype=float)
@@ -249,8 +228,6 @@ class MultilayerPerceptron:
 
         return np.where(classes == 0, "B", "M")
 
-
-
     def save(self, filepath):
         """Save the network architecture and learned parameters as JSON."""
         path = Path(filepath)
@@ -290,3 +267,4 @@ class MultilayerPerceptron:
 
         model.scaler = model_data.get("scaler")
         return model
+ 
