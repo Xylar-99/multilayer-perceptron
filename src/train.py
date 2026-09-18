@@ -51,6 +51,7 @@ def plot_learning_curves(history, output_path):
 
 def train_model(train_data_path,test_data_path,hidden_layers,epochs,batch_size,learning_rate,model_out,plot_out,seed=42,scaler_path="scaler.pkl"):
     """Run the full training workflow and return the trained model."""
+    
     training_data = Dataset.from_csv(train_data_path).clean()
     test_data = Dataset.from_csv(test_data_path).clean()
     

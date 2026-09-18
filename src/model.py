@@ -256,8 +256,8 @@ class MultilayerPerceptron:
 
         model = cls(
             model_data["input_features"],
-            model_data["hidden_layers"],
-            model_data.get("seed", 42),
+            hidden_layers=model_data["hidden_layers"][:-1],
+            seed=model_data.get("seed", 42),
         )
         dense_layers = [layer for layer in model.layers if isinstance(layer, DenseLayer)]
 
@@ -267,4 +267,3 @@ class MultilayerPerceptron:
 
         model.scaler = model_data.get("scaler")
         return model
- 

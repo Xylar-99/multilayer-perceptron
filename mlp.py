@@ -23,48 +23,96 @@ MODE_OPTIONS = {
         "--seed",
         "--scaler",
     },
-    "predict": {"--predict", "--input_csv", "--output_csv", "--model", "--scaler"},
+    "predict": {"--predict", "--input_csv", "--dataset", "--output_csv", "--model", "--scaler"},
 }
 
 
+class ModeArgumentParser(argparse.ArgumentParser):
+    """Format errors with only the options for the selected mode."""
+
+    def __init__(self, mode, *args, **kwargs):
+        self.mode = mode
+        self.mode_actions = []
+        super().__init__(*args, **kwargs)
+
+    def add_mode_argument(self, group, *args, **kwargs):
+        action = group.add_argument(*args, **kwargs)
+        self.mode_actions.append(action)
+        return action
+
+    def format_mode_options(self):
+        formatter = argparse.RawTextHelpFormatter(prog=self.prog)
+        formatter.start_section(f"{self.mode.title()} options")
+        formatter.add_arguments(self.mode_actions)
+        formatter.end_section()
+        return formatter.format_help()
+
+    def error(self, message):
+        print(f"{self.prog}: error: {message}\n", file=sys.stderr)
+        print(f"Valid flags for --{self.mode}:\n", file=sys.stderr)
+        print(self.format_mode_options(), end="", file=sys.stderr)
+        self.exit(2)
+
+
 def build_parser():
-    """Create the parser while keeping the three workflows visible in its help."""
+    """Create the parser used before an execution mode is selected."""
     parser = argparse.ArgumentParser(
         description="Multilayer Perceptron (MLP) — Wisconsin Breast Cancer Classification"
     )
-    mode_group = parser.add_argument_group("Execution modes (choose exactly one)")
-    mode_group.add_argument("--split", action="store_true", help="Split and scale the raw dataset.")
-    mode_group.add_argument("--train", action="store_true", help="Train a neural network.")
-    mode_group.add_argument("--predict", action="store_true", help="Evaluate labeled data or predict feature-only rows.")
-
-    split_group = parser.add_argument_group("Options for --split")
-    split_group.add_argument("--dataset", default="data/data.csv", help="Raw CSV for --split or data for --predict.")
-    split_group.add_argument("--train_out", default="data/train.csv", help="Destination path for the training CSV.")
-    split_group.add_argument("--test_out", default="data/test.csv", help="Destination path for the test CSV.")
-    split_group.add_argument("--scaler_out", default="output/scaler.json", help="Destination path for scaler JSON.")
-    split_group.add_argument("--ratio", type=float, default=0.8, help="Training split ratio (default: 0.8).")
-
-    train_group = parser.add_argument_group("Options for --train")
-    train_group.add_argument("--train_data", default="data/train.csv", help="Path to the training CSV.")
-    train_group.add_argument("--test_data", default="data/test.csv", help="Path to the test CSV.")
-    train_group.add_argument("--layer", type=int, nargs="+", default=[24, 24], help="Hidden-layer units (default: 24 24).")
-    train_group.add_argument("--epochs", type=int, default=84, help="Number of training epochs (default: 84).")
-    train_group.add_argument("--batch_size", type=int, default=8, help="Mini-batch size (default: 8).")
-    train_group.add_argument("--learning_rate", type=float, default=0.0314, help="Learning rate (default: 0.0314).")
-    train_group.add_argument("--model_out", default="output/saved_model.json", help="Path for the trained model.")
-    train_group.add_argument("--plot_out", default="output/learning_curves.png", help="Path for the learning-curve plot.")
-    train_group.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility (default: 42).")
+    parser.add_argument("--split", action="store_true", help="Split and scale the raw dataset.")
+    parser.add_argument("--train", action="store_true", help="Train a neural network.")
+    parser.add_argument("--predict", action="store_true", help="Predict using a trained model.")
+    return parser
 
 
-    predict_group = parser.add_argument_group("Options for --predict")
-    predict_group.add_argument("--model", default="output/saved_model.json", help="Path to the saved model.")
-    predict_group.add_argument("--input_csv", default="data/example.csv", help="CSV for --predict (features or labeled).")
-    predict_group.add_argument("--output_csv", default="data/predictions.csv", help="Destination path for predictions CSV.")
+def build_mode_parser(mode):
 
+    descriptions = {
+        "split": "Split and scale the raw dataset.",
+        "train": "Train a neural network.",
+        "predict": "Predict using a trained model.",
+    }
+    parser = ModeArgumentParser(
+        mode,
+        description=descriptions[mode],
+        usage=f"%(prog)s --{mode} [OPTIONS]",
+        formatter_class=argparse.RawTextHelpFormatter,
+        add_help=False,
+    )
+    parser.add_argument("-h", "--help", action="help", help=argparse.SUPPRESS)
+    parser.set_defaults(split=False, train=False, predict=False)
 
-    shared_group = parser.add_argument_group("Shared options")
-    shared_group.add_argument("--scaler", default="output/scaler.json", help="Path to the scaler JSON (used for both --train and --predict).")
+    group = parser.add_argument_group(f"{mode.title()} options")
 
+    def add(*args, **kwargs):
+        return parser.add_mode_argument(group, *args, **kwargs)
+
+    if mode == "split":
+        add("--split", action="store_true", help="Split and scale the dataset.")
+        add("--dataset", default="data/data.csv", metavar="DATASET", help="Raw CSV.\nExample: --dataset data/data.csv")
+        add("--train_out", default="data/train.csv", help="Destination path for the training CSV.")
+        add("--test_out", default="data/test.csv", help="Destination path for the test CSV.")
+        add("--scaler_out", default="output/scaler.json", help="Destination path for scaler JSON.")
+        add("--ratio", type=float, default=0.8, help="Training split ratio (default: 0.8).")
+    elif mode == "train":
+        add("--train", action="store_true", help="Train a neural network.")
+        add("--train_data", default="data/train.csv", help="Path to the training CSV.")
+        add("--test_data", default="data/test.csv", help="Path to the test CSV.")
+        add("--layer", type=int, nargs="+", default=[24, 24], help="Hidden-layer units (default: 24 24).")
+        add("--epochs", type=int, default=84, help="Number of training epochs (default: 84).")
+        add("--batch_size", type=int, default=8, help="Mini-batch size (default: 8).")
+        add("--learning_rate", type=float, default=0.0314, help="Learning rate (default: 0.0314).")
+        add("--model_out", default="output/saved_model.json", help="Path for the trained model JSON.\nExample: --model_out models/model.json")
+        add("--plot_out", default="output/learning_curves.png", help="Path for the learning-curve plot.")
+        add("--seed", type=int, default=42, help="Random seed for reproducibility (default: 42).")
+        add("--scaler", default="output/scaler.json", help="Path to the scaler JSON.")
+    else:
+        add("--predict", action="store_true", help="Predict using a trained model.")
+        add("--input_csv", "--dataset", dest="input_csv", default="data/example.csv", metavar="INPUT", help="Prediction CSV.\nExample: --dataset data/test.csv")
+        add("--output_csv", default="data/predictions.csv", metavar="OUTPUT", help="Destination path for predictions CSV.\nExample: --output_csv data/predictions.csv")
+        add("--model", default="output/saved_model.json", metavar="MODEL", help="Saved model JSON.\nExample: --model models/model.json")
+        add("--scaler", default="output/scaler.json", metavar="SCALER", help="Saved scaler JSON.\nExample: --scaler models/scaler.json")
+        parser.set_defaults(output_csv="data/predictions.csv")
 
     return parser
 
@@ -72,24 +120,26 @@ def build_parser():
 def parse_arguments(raw_argv=None):
     """Parse one workflow and reject options that belong to a different mode."""
     argv = sys.argv[1:] if raw_argv is None else raw_argv
+    passed_flags = [argument.split("=", maxsplit=1)[0] for argument in argv if argument.startswith("-")]
     parser = build_parser()
-    passed_flags = {argument.split("=", maxsplit=1)[0] for argument in argv if argument.startswith("-")}
-    if "--help" in passed_flags or "-h" in passed_flags:
-        return parser.parse_args(argv)
 
     selected_modes = [mode for mode in MODE_OPTIONS if f"--{mode}" in passed_flags]
     if not selected_modes:
+        if "--help" in passed_flags or "-h" in passed_flags:
+            return parser.parse_args(argv)
         parser.error("choose one execution mode: --split, --train, or --predict")
     if len(selected_modes) > 1:
         parser.error("choose only one execution mode at a time")
 
     active_mode = selected_modes[0]
+    parser = build_mode_parser(active_mode)
+    if "--help" in passed_flags or "-h" in passed_flags:
+        return parser.parse_args(argv)
+
     for flag in passed_flags:
         if flag not in MODE_OPTIONS[active_mode]:
-            owners = [mode for mode, options in MODE_OPTIONS.items() if flag in options]
-            if owners:
-                parser.error(f"{flag} is only valid with " + " or ".join(f"--{mode}" for mode in owners))
-            parser.error(f"unrecognised argument: {flag}")
+            parser.error(f"{flag} is not valid with --{active_mode}")
+
     return parser.parse_args(argv)
 
 
@@ -111,7 +161,7 @@ def run(raw_argv=None):
             args.seed,
             args.scaler,
         )
-    return Predictor(args.model, args.scaler , args.input_csv , args.output_csv).predict()
+    return Predictor(args.model, args.scaler, args.input_csv, args.output_csv).predict()
 
 
 def main():

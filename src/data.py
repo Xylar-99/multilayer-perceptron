@@ -45,8 +45,23 @@ class Dataset:
     @classmethod
     def from_csv(cls, filepath):
         data = pd.read_csv(filepath, header=None)
-        
-        labels = data.iloc[:, 1].to_numpy()
+
+        if data.shape[1] != 32:
+            raise ValueError(
+                "Dataset CSV must contain an ID, a diagnosis, and 30 features."
+            )
+
+        ids = pd.to_numeric(data.iloc[:, 0], errors="coerce")
+        if ids.isna().any():
+            raise ValueError("Dataset CSV first column must contain numeric IDs.")
+
+        labels = data.iloc[:, 1].astype("string").str.strip()
+        if not labels.isin(["B", "M"]).all():
+            raise ValueError(
+                "Dataset CSV second column must contain B or M diagnoses."
+            )
+
+        labels = labels.to_numpy()
         features = data.iloc[:, 2:].to_numpy()
 
         return cls(features, labels)
