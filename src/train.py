@@ -45,6 +45,7 @@ def plot_learning_curves(history, output_path):
 
     figure.tight_layout()
     figure.savefig(output_path, dpi=150)
+    plt.show()
     plt.close(figure)
 
 
