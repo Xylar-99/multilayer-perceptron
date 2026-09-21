@@ -163,6 +163,33 @@ class MultilayerPerceptron:
         for layer in self.layers:
             layer.update(learning_rate)
 
+    def early_stopping(self, val_loss, patience=20, min_delta=0.0001):
+        if not hasattr(self, "_best_val_loss"):
+            self._best_val_loss = np.inf
+            self._early_stopping_counter = 0
+            self._best_weights = None
+
+        if val_loss < self._best_val_loss - min_delta:
+            self._best_val_loss = val_loss
+            self._early_stopping_counter = 0
+            self._best_weights = [
+                (layer.weights.copy(), layer.biases.copy())
+                for layer in self.layers
+                if isinstance(layer, DenseLayer)
+            ]
+        else:
+            self._early_stopping_counter += 1
+            if self._early_stopping_counter >= patience:
+                for layer, (weights, biases) in zip(
+                    (layer for layer in self.layers if isinstance(layer, DenseLayer)),
+                    self._best_weights,
+                ):
+                    layer.weights = weights.copy()
+                    layer.biases = biases.copy()
+                return True
+
+        return False
+
     def fit(self, X_train, y_train, X_valid, y_valid):
 
         X_train = np.asarray(X_train, dtype=float)
@@ -210,6 +237,9 @@ class MultilayerPerceptron:
                 f"- loss: {train_loss:.4f} "
                 f"- val_loss: {valid_loss:.4f}"
             )
+
+            if self.early_stopping(valid_loss):
+                break
 
     def predict_proba(self, X):
         """Return malignant probability for each sample."""
