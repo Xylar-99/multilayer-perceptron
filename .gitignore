@@ -1,17 +1,17 @@
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-.venv/
-*.egg-info/
-dist/
-build/
-output/*.npy
-output/*.png
-output/*.json
-*.npy
-*.png
-.DS_Store
+# __pycache__/
+# *.pyc
+# *.pyo
+# *.pyd
+# .Python
+# env/
+# venv/
+# .venv/
+# *.egg-info/
+# dist/
+# build/
+# output/*.npy
+# output/*.png
+# output/*.json
+# *.npy
+# *.png
+# .DS_Store
